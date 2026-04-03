@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isTeacher() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isTeacher() || isAdmin());
+      allow update: if isAuthenticated() && (isTeacher() || isAdmin());
+    }
+
+    match /passes/{passId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isTeacher() || isAdmin());
+      allow update: if isAuthenticated() && (isTeacher() || isAdmin());
+    }
+  }
+}

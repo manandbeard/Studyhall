@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A teacher or admin in the system.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "User's email address" },
+        "name": { "type": "string", "description": "Display name" },
+        "role": { "type": "string", "enum": ["teacher", "admin"], "description": "User role" },
+        "roomNumber": { "type": "string", "description": "Teacher's room number" }
+      },
+      "required": ["uid", "email", "name", "role"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "A student in the school.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Student's full name" },
+        "thirdPeriodTeacherId": { "type": "string", "description": "Reference to the users collection (their default 3rd-period teacher)" }
+      },
+      "required": ["name", "thirdPeriodTeacherId"]
+    },
+    "Pass": {
+      "title": "Pass",
+      "description": "A hall pass for a student.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "description": "Reference to students" },
+        "studentName": { "type": "string", "description": "Denormalized student name" },
+        "originTeacherId": { "type": "string", "description": "Reference to users (3rd-period teacher)" },
+        "destinationTeacherId": { "type": "string", "description": "Reference to users (Requesting teacher)" },
+        "destinationRoom": { "type": "string", "description": "Denormalized room number" },
+        "status": { "type": "string", "enum": ["pending", "in_transit", "arrived"], "description": "Current status of the pass" },
+        "requestedAt": { "type": "string", "format": "date-time", "description": "When the destination teacher requested the student" },
+        "departedAt": { "type": "string", "format": "date-time", "description": "When the 3rd-period teacher clicked Send" },
+        "arrivedAt": { "type": "string", "format": "date-time", "description": "When the destination teacher clicked Received" }
+      },
+      "required": ["studentId", "studentName", "originTeacherId", "destinationTeacherId", "status", "requestedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Collection of teachers and admins."
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Collection of students."
+    },
+    "/passes/{passId}": {
+      "schema": { "$ref": "#/entities/Pass" },
+      "description": "Collection of hall passes."
+    }
+  }
+}
