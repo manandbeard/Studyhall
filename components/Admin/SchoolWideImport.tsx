@@ -129,7 +129,7 @@ export default function SchoolWideImport() {
     <div className="neo-box flex flex-col bg-white">
       <div className="p-4 border-b-4 border-neo-border bg-neo-yellow">
         <h2 className="text-xl font-black uppercase">School-Wide Roster Import</h2>
-        <p className="font-bold text-sm mt-1">Import the entire school's 3rd period CSV.</p>
+        <p className="font-bold text-sm mt-1">Import the entire school&apos;s 3rd period CSV.</p>
       </div>
       
       <div className="p-6 space-y-6">
@@ -153,9 +153,9 @@ export default function SchoolWideImport() {
             </h3>
             <p className="text-sm font-bold text-gray-500">
               Format: <br/>
-              "TeacherName, CourseName",,<br/>
+              &quot;TeacherName, CourseName&quot;,,<br/>
               Student Name,Destination,Attendance<br/>
-              "Student Name",Destination,
+              &quot;Student Name&quot;,Destination,
             </p>
             <textarea 
               className="neo-input w-full h-64 resize-none text-xs font-mono"
