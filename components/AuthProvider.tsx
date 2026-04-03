@@ -31,17 +31,17 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
+const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
+
+const isAdminEmail = (email: string | null): boolean => {
+  return !!email && adminEmails.includes(email);
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
-
-    const isAdminEmail = (email: string | null): boolean => {
-      return !!email && adminEmails.includes(email);
-    };
-
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       try {
         if (firebaseUser) {
@@ -79,9 +79,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 
                 await setDoc(userDocRef, newUser);
                 
-                // Delete the old placeholder doc
-                const { deleteDoc } = await import('firebase/firestore');
-                await deleteDoc(existingDoc.ref);
+                // Delete the old placeholder doc (non-blocking: if rules prevent deletion,
+                // the orphaned doc is harmless and can be cleaned up by an admin later)
+                try {
+                  const { deleteDoc } = await import('firebase/firestore');
+                  await deleteDoc(existingDoc.ref);
+                } catch (deleteError) {
+                  console.warn('Could not delete placeholder doc:', deleteError);
+                }
                 
                 // Update all students that referenced the old placeholder ID
                 const studentsQ = query(collection(db, 'students'), where('thirdPeriodTeacherId', '==', existingDoc.id));
