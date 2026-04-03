@@ -19,7 +19,8 @@
       "type": "object",
       "properties": {
         "name": { "type": "string", "description": "Student's full name" },
-        "thirdPeriodTeacherId": { "type": "string", "description": "Reference to the users collection (their default 3rd-period teacher)" }
+        "thirdPeriodTeacherId": { "type": "string", "description": "Reference to the users collection (their default 3rd-period teacher)" },
+        "notes": { "type": "string", "description": "Optional notes about the student" }
       },
       "required": ["name", "thirdPeriodTeacherId"]
     },

@@ -9,7 +9,7 @@ import { Edit2, Save, X } from 'lucide-react';
 export default function TeacherManagement() {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', roomNumber: '' });
+  const [editForm, setEditForm] = useState({ name: '', roomNumber: '', email: '' });
 
   useEffect(() => {
     const q = query(collection(db, 'users'), where('role', '==', 'teacher'));
@@ -26,14 +26,15 @@ export default function TeacherManagement() {
 
   const handleEdit = (teacher: any) => {
     setEditingId(teacher.id);
-    setEditForm({ name: teacher.name, roomNumber: teacher.roomNumber || '' });
+    setEditForm({ name: teacher.name, roomNumber: teacher.roomNumber || '', email: teacher.email || '' });
   };
 
   const handleSave = async (id: string) => {
     try {
       await updateDoc(doc(db, 'users', id), {
         name: editForm.name,
-        roomNumber: editForm.roomNumber
+        roomNumber: editForm.roomNumber,
+        email: editForm.email
       });
       setEditingId(null);
     } catch (error) {
@@ -70,8 +71,18 @@ export default function TeacherManagement() {
                       onChange={e => setEditForm({...editForm, name: e.target.value})}
                     />
                   ) : teacher.name}
+                  {teacher.isPlaceholder && <span className="ml-2 text-xs bg-neo-yellow text-neo-border px-1">Placeholder</span>}
                 </td>
-                <td className="p-2 text-sm">{teacher.email}</td>
+                <td className="p-2 text-sm">
+                  {editingId === teacher.id ? (
+                    <input 
+                      type="email" 
+                      className="neo-input w-full py-1" 
+                      value={editForm.email}
+                      onChange={e => setEditForm({...editForm, email: e.target.value})}
+                    />
+                  ) : teacher.email}
+                </td>
                 <td className="p-2 font-bold">
                   {editingId === teacher.id ? (
                     <input 

@@ -8,11 +8,12 @@ import GlobalTransitFeed from '@/components/Admin/GlobalTransitFeed';
 import TeacherManagement from '@/components/Admin/TeacherManagement';
 import StatisticsDashboard from '@/components/Admin/StatisticsDashboard';
 import PassAuditLog from '@/components/Admin/PassAuditLog';
+import SchoolWideImport from '@/components/Admin/SchoolWideImport';
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'feed' | 'teachers' | 'stats' | 'audit'>('feed');
+  const [activeTab, setActiveTab] = useState<'feed' | 'teachers' | 'stats' | 'audit' | 'import'>('feed');
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {
@@ -64,6 +65,12 @@ export default function AdminDashboard() {
         >
           Audit Log
         </button>
+        <button 
+          onClick={() => setActiveTab('import')}
+          className={`px-6 py-3 font-black uppercase border-r-4 border-neo-border transition-colors ${activeTab === 'import' ? 'bg-neo-yellow' : 'hover:bg-gray-100'}`}
+        >
+          Bulk Import
+        </button>
       </div>
 
       <main className="flex-1 p-4 max-w-5xl mx-auto w-full">
@@ -71,6 +78,7 @@ export default function AdminDashboard() {
         {activeTab === 'teachers' && <TeacherManagement />}
         {activeTab === 'stats' && <StatisticsDashboard />}
         {activeTab === 'audit' && <PassAuditLog />}
+        {activeTab === 'import' && <SchoolWideImport />}
       </main>
     </div>
   );

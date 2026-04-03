@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        // Fetch custom user data from Firestore
+        // Fetch custom user data from Firestore by UID
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         const userDoc = await getDoc(userDocRef);
         
@@ -51,6 +51,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           setUser(userData);
         } else {
+          // Check if a user with this email already exists (e.g., pre-created by admin)
+          if (firebaseUser.email) {
+            const { collection, query, where, getDocs } = await import('firebase/firestore');
+            const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
+            const snapshot = await getDocs(q);
+            
+            if (!snapshot.empty) {
+              // Link the existing user document to this new UID
+              const existingDoc = snapshot.docs[0];
+              const userData = existingDoc.data() as AppUser;
+              
+              // Create a new doc with the correct UID and copy data
+              const newUser: AppUser = {
+                ...userData,
+                uid: firebaseUser.uid,
+                name: firebaseUser.displayName || userData.name,
+                role: firebaseUser.email === 'nhelland@nbend.k12.or.us' ? 'admin' : userData.role,
+              };
+              
+              await setDoc(userDocRef, newUser);
+              
+              // Delete the old placeholder doc
+              const { deleteDoc } = await import('firebase/firestore');
+              await deleteDoc(existingDoc.ref);
+              
+              // Update all students that referenced the old placeholder ID
+              const studentsQ = query(collection(db, 'students'), where('thirdPeriodTeacherId', '==', existingDoc.id));
+              const studentsSnapshot = await getDocs(studentsQ);
+              for (const studentDoc of studentsSnapshot.docs) {
+                await updateDoc(studentDoc.ref, { thirdPeriodTeacherId: firebaseUser.uid });
+              }
+
+              setUser(newUser);
+              setLoading(false);
+              return;
+            }
+          }
+
           // Create a new user doc if it doesn't exist (default to teacher)
           const newUser: AppUser = {
             uid: firebaseUser.uid,
