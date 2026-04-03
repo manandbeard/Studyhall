@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
@@ -17,6 +17,18 @@ export default function TeacherSettings() {
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  // Keep form in sync if the user context is updated externally (e.g., after save).
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        roomNumber: user.roomNumber || '',
+        phoneNumber: user.phoneNumber || '',
+        isAway: user.isAway || false,
+      });
+    }
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -100,7 +100,7 @@ export default function PassAuditLog() {
                       pass.status === 'arrived' ? 'bg-neo-green' : 
                       pass.status === 'in_transit' ? 'bg-neo-yellow' : 'bg-white'
                     }`}>
-                      {pass.status.replace('_', ' ')}
+                      {(pass.status || '').replace('_', ' ')}
                     </span>
                   </td>
                   <td className="p-3 font-bold text-sm">{transitTime}</td>

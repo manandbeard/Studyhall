@@ -30,6 +30,7 @@ export default function TeacherManagement() {
   };
 
   const handleSave = async (id: string) => {
+    if (!editForm.name.trim()) return;
     try {
       await updateDoc(doc(db, 'users', id), {
         name: editForm.name,
