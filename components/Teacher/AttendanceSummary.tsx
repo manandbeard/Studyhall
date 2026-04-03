@@ -8,28 +8,17 @@ import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { differenceInMinutes } from 'date-fns';
 import { Users, Clock, UserX } from 'lucide-react';
 
-interface InTransitPass {
-  originTeacherId: string;
-  destinationTeacherId: string;
-  departedAt: string | null;
-  status: string;
-}
-
 export default function AttendanceSummary() {
   const { user } = useAuth();
   const [rosterCount, setRosterCount] = useState(0);
   const [absentCount, setAbsentCount] = useState(0);
   const [outgoingActiveCount, setOutgoingActiveCount] = useState(0);
   const [incomingArrivedCount, setIncomingArrivedCount] = useState(0);
-  // Store raw in-transit passes so tardy can be derived at render time.
-  const [inTransitPasses, setInTransitPasses] = useState<InTransitPass[]>([]);
-  // Updated every 30 seconds solely to trigger re-renders for tardy recalculation.
+  const [tardyCount, setTardyCount] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 30000);
+    const interval = setInterval(() => setCurrentTime(new Date()), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -53,12 +42,24 @@ export default function AttendanceSummary() {
       where('status', 'in', ['pending', 'in_transit'])
     );
     const unsubscribeOutgoing = onSnapshot(qOutgoing, (snapshot) => {
-      setOutgoingActiveCount(snapshot.size);
+      const outgoingPasses = snapshot.docs.map(doc => doc.data());
+      setOutgoingActiveCount(outgoingPasses.length);
+      
+      // Calculate tardy from outgoing
+      const outgoingTardy = outgoingPasses.filter((p: any) => {
+        if (p.status === 'in_transit' && p.departedAt) {
+          return differenceInMinutes(currentTime, new Date(p.departedAt)) >= 5;
+        }
+        return false;
+      }).length;
+      
+      // We'll combine this with incoming tardy in a separate state or just calculate here
+      // But since we have two separate listeners, we'll need a way to merge them.
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'passes');
     });
 
-    // 3. Count incoming arrived passes
+    // 3. Count incoming arrived and incoming tardy
     const qIncoming = query(
       collection(db, 'passes'),
       where('destinationTeacherId', '==', user.uid),
@@ -71,14 +72,20 @@ export default function AttendanceSummary() {
       handleFirestoreError(error, OperationType.LIST, 'passes');
     });
 
-    // 4. Track all in_transit passes so tardy count can be derived at render time
-    //    (avoids re-subscribing listeners every 30 s just to recalculate time).
+    // 4. Calculate total tardy (all in_transit > 5 mins where user is origin or destination)
     const qTardy = query(
       collection(db, 'passes'),
       where('status', '==', 'in_transit')
     );
     const unsubscribeTardy = onSnapshot(qTardy, (snapshot) => {
-      setInTransitPasses(snapshot.docs.map(doc => doc.data() as InTransitPass));
+      const allInTransit = snapshot.docs.map(doc => doc.data());
+      const myTardy = allInTransit.filter((p: any) => {
+        const isMine = p.originTeacherId === user.uid || p.destinationTeacherId === user.uid;
+        if (!isMine) return false;
+        if (!p.departedAt) return false;
+        return differenceInMinutes(currentTime, new Date(p.departedAt)) >= 5;
+      });
+      setTardyCount(myTardy.length);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'passes');
     });
@@ -89,14 +96,7 @@ export default function AttendanceSummary() {
       unsubscribeIncoming();
       unsubscribeTardy();
     };
-  }, [user]);
-
-  // Derive tardy count at render time so it stays accurate as currentTime ticks.
-  const tardyCount = inTransitPasses.filter((p) => {
-    const isMine = p.originTeacherId === user?.uid || p.destinationTeacherId === user?.uid;
-    if (!isMine || !p.departedAt) return false;
-    return differenceInMinutes(currentTime, new Date(p.departedAt)) >= 5;
-  }).length;
+  }, [user, currentTime]);
 
   // Present = (Roster - Absent - OutgoingActive) + IncomingArrived
   const presentCount = (rosterCount - absentCount - outgoingActiveCount) + incomingArrivedCount;

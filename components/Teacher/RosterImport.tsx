@@ -155,9 +155,6 @@ export default function RosterImport() {
         setMessage({ text: 'No valid names found in file.', type: 'error' });
       }
     };
-    reader.onerror = () => {
-      setMessage({ text: 'Failed to read file. Please try again.', type: 'error' });
-    };
     reader.readAsText(file);
     // Reset input
     e.target.value = '';
