@@ -16,8 +16,9 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAuthenticated() && isAdmin();
     }
 
     match /students/{studentId} {
@@ -28,8 +29,10 @@ service cloud.firestore {
 
     match /passes/{passId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (isTeacher() || isAdmin());
-      allow update: if isAuthenticated() && (isTeacher() || isAdmin());
+      allow create: if isAuthenticated() && (isTeacher() || isAdmin())
+        && request.resource.data.status in ['pending', 'in_transit', 'arrived', 'completed'];
+      allow update: if isAuthenticated() && (isTeacher() || isAdmin())
+        && request.resource.data.status in ['pending', 'in_transit', 'arrived', 'completed'];
     }
   }
 }

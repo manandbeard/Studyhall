@@ -36,71 +36,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
+
+    const isAdminEmail = (email: string | null): boolean => {
+      return !!email && adminEmails.includes(email);
+    };
+
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-      if (firebaseUser) {
-        // Fetch custom user data from Firestore by UID
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as AppUser;
-          // Force Nathan Helland to be an admin
-          if (firebaseUser.email === 'nhelland@nbend.k12.or.us' && userData.role !== 'admin') {
-            userData.role = 'admin';
-            await updateDoc(userDocRef, { role: 'admin' });
-          }
-          setUser(userData);
-        } else {
-          // Check if a user with this email already exists (e.g., pre-created by admin)
-          if (firebaseUser.email) {
-            const { collection, query, where, getDocs } = await import('firebase/firestore');
-            const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
-            const snapshot = await getDocs(q);
-            
-            if (!snapshot.empty) {
-              // Link the existing user document to this new UID
-              const existingDoc = snapshot.docs[0];
-              const userData = existingDoc.data() as AppUser;
-              
-              // Create a new doc with the correct UID and copy data
-              const newUser: AppUser = {
-                ...userData,
-                uid: firebaseUser.uid,
-                name: firebaseUser.displayName || userData.name,
-                role: firebaseUser.email === 'nhelland@nbend.k12.or.us' ? 'admin' : userData.role,
-              };
-              
-              await setDoc(userDocRef, newUser);
-              
-              // Delete the old placeholder doc
-              const { deleteDoc } = await import('firebase/firestore');
-              await deleteDoc(existingDoc.ref);
-              
-              // Update all students that referenced the old placeholder ID
-              const studentsQ = query(collection(db, 'students'), where('thirdPeriodTeacherId', '==', existingDoc.id));
-              const studentsSnapshot = await getDocs(studentsQ);
-              for (const studentDoc of studentsSnapshot.docs) {
-                await updateDoc(studentDoc.ref, { thirdPeriodTeacherId: firebaseUser.uid });
-              }
-
-              setUser(newUser);
-              setLoading(false);
-              return;
+      try {
+        if (firebaseUser) {
+          // Fetch custom user data from Firestore by UID
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as AppUser;
+            // Promote configured admin emails to admin role
+            if (isAdminEmail(firebaseUser.email) && userData.role !== 'admin') {
+              userData.role = 'admin';
+              await updateDoc(userDocRef, { role: 'admin' });
             }
-          }
+            setUser(userData);
+          } else {
+            // Check if a user with this email already exists (e.g., pre-created by admin)
+            if (firebaseUser.email) {
+              const { collection, query, where, getDocs } = await import('firebase/firestore');
+              const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
+              const snapshot = await getDocs(q);
+              
+              if (!snapshot.empty) {
+                // Link the existing user document to this new UID
+                const existingDoc = snapshot.docs[0];
+                const userData = existingDoc.data() as AppUser;
+                
+                // Create a new doc with the correct UID and copy data
+                const newUser: AppUser = {
+                  ...userData,
+                  uid: firebaseUser.uid,
+                  name: firebaseUser.displayName || userData.name,
+                  role: isAdminEmail(firebaseUser.email) ? 'admin' : userData.role,
+                };
+                
+                await setDoc(userDocRef, newUser);
+                
+                // Delete the old placeholder doc
+                const { deleteDoc } = await import('firebase/firestore');
+                await deleteDoc(existingDoc.ref);
+                
+                // Update all students that referenced the old placeholder ID
+                const studentsQ = query(collection(db, 'students'), where('thirdPeriodTeacherId', '==', existingDoc.id));
+                const studentsSnapshot = await getDocs(studentsQ);
+                for (const studentDoc of studentsSnapshot.docs) {
+                  await updateDoc(studentDoc.ref, { thirdPeriodTeacherId: firebaseUser.uid });
+                }
 
-          // Create a new user doc if it doesn't exist (default to teacher)
-          const newUser: AppUser = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            name: firebaseUser.displayName || 'Unknown User',
-            role: firebaseUser.email === 'nhelland@nbend.k12.or.us' ? 'admin' : 'teacher',
-            roomNumber: 'TBD',
-          };
-          await setDoc(userDocRef, newUser);
-          setUser(newUser);
+                setUser(newUser);
+                setLoading(false);
+                return;
+              }
+            }
+
+            // Create a new user doc if it doesn't exist (default to teacher)
+            const newUser: AppUser = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              name: firebaseUser.displayName || 'Unknown User',
+              role: isAdminEmail(firebaseUser.email) ? 'admin' : 'teacher',
+              roomNumber: 'TBD',
+            };
+            await setDoc(userDocRef, newUser);
+            setUser(newUser);
+          }
+        } else {
+          setUser(null);
         }
-      } else {
+      } catch (error) {
+        console.error('Error during auth state change:', error);
         setUser(null);
       }
       setLoading(false);

@@ -98,9 +98,10 @@ export default function PassAuditLog() {
                   <td className="p-3">
                     <span className={`px-2 py-1 font-black text-xs uppercase border-2 border-neo-border ${
                       pass.status === 'arrived' ? 'bg-neo-green' : 
-                      pass.status === 'in_transit' ? 'bg-neo-yellow' : 'bg-white'
+                      pass.status === 'in_transit' ? 'bg-neo-yellow' :
+                      pass.status === 'completed' ? 'bg-gray-200' : 'bg-white'
                     }`}>
-                      {pass.status.replace('_', ' ')}
+                      {pass.status.replace('_', ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="p-3 font-bold text-sm">{transitTime}</td>
