@@ -34,11 +34,10 @@
         "originTeacherId": { "type": "string", "description": "Reference to users (3rd-period teacher)" },
         "destinationTeacherId": { "type": "string", "description": "Reference to users (Requesting teacher)" },
         "destinationRoom": { "type": "string", "description": "Denormalized room number" },
-        "status": { "type": "string", "enum": ["pending", "in_transit", "arrived", "completed"], "description": "Current status of the pass" },
+        "status": { "type": "string", "enum": ["pending", "in_transit", "arrived"], "description": "Current status of the pass" },
         "requestedAt": { "type": "string", "format": "date-time", "description": "When the destination teacher requested the student" },
         "departedAt": { "type": "string", "format": "date-time", "description": "When the 3rd-period teacher clicked Send" },
-        "arrivedAt": { "type": "string", "format": "date-time", "description": "When the destination teacher clicked Received" },
-        "completedAt": { "type": "string", "format": "date-time", "description": "When the destination teacher marked the pass as completed" }
+        "arrivedAt": { "type": "string", "format": "date-time", "description": "When the destination teacher clicked Received" }
       },
       "required": ["studentId", "studentName", "originTeacherId", "destinationTeacherId", "status", "requestedAt"]
     }
