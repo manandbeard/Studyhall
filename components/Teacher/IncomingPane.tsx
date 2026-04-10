@@ -13,6 +13,7 @@ export default function IncomingPane() {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [selectedOrigin, setSelectedOrigin] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const [studentSearch, setStudentSearch] = useState('');
   const [isStudentDropdownOpen, setIsStudentDropdownOpen] = useState(false);
@@ -30,6 +31,7 @@ export default function IncomingPane() {
     const unsubscribePasses = onSnapshot(qPasses, (snapshot) => {
       const passData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPasses(passData);
+      setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'passes');
     });
@@ -219,7 +221,9 @@ export default function IncomingPane() {
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto space-y-4">
-        {passes.length === 0 ? (
+        {loading ? (
+          <p className="font-bold text-gray-400 animate-pulse">Loading incoming students...</p>
+        ) : passes.length === 0 ? (
           <p className="font-bold text-gray-500">No incoming students.</p>
         ) : (
           passes.map(pass => (

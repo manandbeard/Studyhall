@@ -10,6 +10,7 @@ import { differenceInMinutes } from 'date-fns';
 export default function OutgoingPane() {
   const { user } = useAuth();
   const [passes, setPasses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export default function OutgoingPane() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const passData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPasses(passData);
+      setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'passes');
     });
@@ -59,7 +61,9 @@ export default function OutgoingPane() {
         <h2 className="text-xl font-black uppercase">Outgoing (3rd Period)</h2>
       </div>
       <div className="p-4 flex-1 overflow-y-auto space-y-4">
-        {passes.length === 0 ? (
+        {loading ? (
+          <p className="font-bold text-gray-400 animate-pulse">Loading passes...</p>
+        ) : passes.length === 0 ? (
           <p className="font-bold text-gray-500">No pending requests.</p>
         ) : (
           passes.map(pass => {

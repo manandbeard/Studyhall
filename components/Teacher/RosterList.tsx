@@ -10,6 +10,7 @@ import { UserX, UserCheck, Search, Edit3 } from 'lucide-react';
 export default function RosterList() {
   const { user } = useAuth();
   const [students, setStudents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [notesValue, setNotesValue] = useState('');
@@ -22,6 +23,7 @@ export default function RosterList() {
       const studentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       studentData.sort((a: any, b: any) => a.name.localeCompare(b.name));
       setStudents(studentData);
+      setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'students');
     });
@@ -71,6 +73,9 @@ export default function RosterList() {
       </div>
       
       <div className="p-4 flex-1 overflow-y-auto">
+        {loading ? (
+          <p className="font-bold text-gray-400 animate-pulse p-4">Loading roster...</p>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {filteredStudents.map(student => (
             <div key={student.id} className={`border-2 border-neo-border p-2 flex flex-col ${student.isAbsent ? 'bg-gray-100 opacity-60' : 'bg-white'}`}>
@@ -137,6 +142,7 @@ export default function RosterList() {
             </p>
           )}
         </div>
+        )}
       </div>
     </div>
   );
