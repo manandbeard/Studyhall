@@ -16,8 +16,24 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && (
+                      (request.auth.uid == userId && 
+                        (request.resource.data.role == 'teacher' || 
+                        (request.resource.data.role == 'admin' && request.auth.token.email == 'nhelland@nbend.k12.or.us'))
+                      ) || 
+                      isAdmin()
+                    );
+      allow update: if isAuthenticated() && (
+                      (request.auth.uid == userId && 
+                        (request.resource.data.role == resource.data.role || 
+                        (request.resource.data.role == 'admin' && request.auth.token.email == 'nhelland@nbend.k12.or.us'))
+                      ) || 
+                      isAdmin()
+                    );
+      allow delete: if isAuthenticated() && (
+                      isAdmin() || 
+                      (resource.data.isPlaceholder == true && resource.data.email == request.auth.token.email)
+                    );
     }
 
     match /students/{studentId} {

@@ -1,14 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { collection, addDoc, getDocs, query, where, setDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, setDoc, doc, writeBatch } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { Upload, AlertCircle, CheckCircle2, FileText } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle2, FileText, Sparkles } from 'lucide-react';
+import { GoogleGenAI, Type } from '@google/genai';
 
 export default function SchoolWideImport() {
   const [csvText, setCsvText] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' | 'info' } | null>(null);
+  const [progress, setProgress] = useState('');
 
   const handleImport = async () => {
     if (!csvText.trim()) {
@@ -16,90 +18,153 @@ export default function SchoolWideImport() {
       return;
     }
     setLoading(true);
-    setMessage({ text: 'Parsing and importing...', type: 'info' });
+    setMessage(null);
+    setProgress('Initializing AI...');
 
     try {
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('NEXT_PUBLIC_GEMINI_API_KEY is not set in the environment.');
+      }
+      const ai = new GoogleGenAI({ apiKey });
+      
       const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);
-      let currentTeacherName = '';
-      let currentTeacherId = '';
+      const chunkSize = 100;
+      let allParsedData: any[] = [];
+      let lastTeacher = "";
+
+      for (let i = 0; i < lines.length; i += chunkSize) {
+        setProgress(`AI Parsing chunk ${Math.floor(i / chunkSize) + 1} of ${Math.ceil(lines.length / chunkSize)}...`);
+        const chunkLines = lines.slice(i, i + chunkSize);
+        const chunkText = chunkLines.join('\n');
+
+        const prompt = `
+        Parse the following CSV chunk of a school roster.
+        The previous chunk's last active teacher was: "${lastTeacher}". Use this teacher name for students at the beginning of this chunk if no new teacher name is specified before them.
+        Extract the teachers and their students. For the teacher name, extract just the name (e.g., "Helland" or "Smith, John"), ignoring course names.
+        CSV Chunk:
+        ${chunkText}
+        `;
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  teacherName: { type: Type.STRING },
+                  students: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        name: { type: Type.STRING },
+                        destination: { type: Type.STRING },
+                        isAbsent: { type: Type.BOOLEAN }
+                      },
+                      required: ["name", "destination", "isAbsent"]
+                    }
+                  }
+                },
+                required: ["teacherName", "students"]
+              }
+            }
+          }
+        });
+
+        const responseText = response.text;
+        if (responseText) {
+          const parsedChunk = JSON.parse(responseText);
+          allParsedData = [...allParsedData, ...parsedChunk];
+          if (parsedChunk.length > 0) {
+            lastTeacher = parsedChunk[parsedChunk.length - 1].teacherName;
+          }
+        }
+      }
+
+      setProgress('Consolidating data...');
+      // Group by teacher
+      const teacherMap = new Map<string, any[]>();
+      for (const group of allParsedData) {
+        const tName = group.teacherName.trim();
+        if (!tName) continue;
+        const existing = teacherMap.get(tName) || [];
+        teacherMap.set(tName, [...existing, ...group.students]);
+      }
+
+      setProgress('Importing to database...');
       let importedStudents = 0;
       let importedTeachers = 0;
-      let isParsingStudents = false;
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        
-        // If we see the header row, the following lines are students
-        if (line.startsWith('Student Name,Last name')) {
-          isParsingStudents = true;
-          continue;
+      const teacherIdCache = new Map<string, string>();
+
+      // Process teachers sequentially to avoid race conditions on creation
+      for (const [teacherName, students] of Array.from(teacherMap.entries())) {
+        let currentTeacherId = teacherIdCache.get(teacherName);
+
+        if (!currentTeacherId) {
+          const q = query(collection(db, 'users'), where('name', '==', teacherName));
+          const snapshot = await getDocs(q);
+
+          if (snapshot.empty) {
+            const newTeacherRef = doc(collection(db, 'users'));
+            await setDoc(newTeacherRef, {
+              uid: newTeacherRef.id,
+              name: teacherName,
+              role: 'teacher',
+              roomNumber: 'TBD',
+              isPlaceholder: true,
+              email: `${teacherName.toLowerCase().replace(/[^a-z0-9]/g, '')}@placeholder.com`
+            });
+            currentTeacherId = newTeacherRef.id;
+            importedTeachers++;
+          } else {
+            currentTeacherId = snapshot.docs[0].id;
+          }
+          teacherIdCache.set(teacherName, currentTeacherId);
         }
 
-        // If we hit an empty line or a line that looks like a teacher and we aren't parsing students
-        // Actually, a better heuristic: if the NEXT line is the header, this MUST be a teacher.
-        if (i + 1 < lines.length && lines[i + 1].startsWith('Student Name,Last name')) {
-          isParsingStudents = false;
-          const teacherMatch = line.match(/^"([^,]+),\s*([^"]+)"/);
-          if (teacherMatch) {
-            currentTeacherName = teacherMatch[1].trim(); // e.g., "Helland"
-            
-            // Find or create teacher
-            const q = query(collection(db, 'users'), where('name', '==', currentTeacherName));
-            const snapshot = await getDocs(q);
-            
-            if (snapshot.empty) {
-              // Create placeholder teacher
-              const newTeacherRef = doc(collection(db, 'users'));
-              await setDoc(newTeacherRef, {
-                uid: newTeacherRef.id,
-                name: currentTeacherName,
-                role: 'teacher',
-                roomNumber: 'TBD',
-                isPlaceholder: true,
-                email: `${currentTeacherName.toLowerCase().replace(/\s+/g, '')}@placeholder.com`
-              });
-              currentTeacherId = newTeacherRef.id;
-              importedTeachers++;
-            } else {
-              currentTeacherId = snapshot.docs[0].id;
+        // Batch write students for this teacher
+        let batch = writeBatch(db);
+        let opCount = 0;
+
+        for (const student of students) {
+          const studentName = student.name.trim();
+          if (!studentName) continue;
+
+          // Check if student exists
+          const sq = query(
+            collection(db, 'students'),
+            where('name', '==', studentName),
+            where('thirdPeriodTeacherId', '==', currentTeacherId)
+          );
+          const sSnapshot = await getDocs(sq);
+
+          if (sSnapshot.empty) {
+            const newStudentRef = doc(collection(db, 'students'));
+            batch.set(newStudentRef, {
+              name: studentName,
+              thirdPeriodTeacherId: currentTeacherId,
+              notes: student.destination ? `Destination: ${student.destination}` : '',
+              isAbsent: student.isAbsent
+            });
+            importedStudents++;
+            opCount++;
+
+            if (opCount >= 450) {
+              await batch.commit();
+              batch = writeBatch(db);
+              opCount = 0;
             }
           }
-          continue;
         }
 
-        // Parse student row
-        if (isParsingStudents) {
-          // Stop parsing students if we hit a blank line (optional, depends on CSV format)
-          if (!line.trim()) {
-            isParsingStudents = false;
-            continue;
-          }
-
-          // Regex to handle quotes around the name: "Last, First M.",Destination,Attendance
-          const studentMatch = line.match(/^"([^"]+)",([^,]*),(.*)$/);
-          if (studentMatch && currentTeacherId) {
-            const studentName = studentMatch[1].trim();
-            const destination = studentMatch[2].trim();
-            const attendance = studentMatch[3].trim();
-
-            // Check if student exists for this teacher
-            const sq = query(
-              collection(db, 'students'), 
-              where('name', '==', studentName), 
-              where('thirdPeriodTeacherId', '==', currentTeacherId)
-            );
-            const sSnapshot = await getDocs(sq);
-
-            if (sSnapshot.empty) {
-              await addDoc(collection(db, 'students'), {
-                name: studentName,
-                thirdPeriodTeacherId: currentTeacherId,
-                notes: destination ? `Destination: ${destination}` : '',
-                isAbsent: attendance !== ''
-              });
-              importedStudents++;
-            }
-          }
+        if (opCount > 0) {
+          await batch.commit();
         }
       }
 
@@ -107,9 +172,11 @@ export default function SchoolWideImport() {
       setCsvText('');
     } catch (error: any) {
       console.error(error);
-      setMessage({ text: error.message, type: 'error' });
+      setMessage({ text: error.message || 'An error occurred during import.', type: 'error' });
+    } finally {
+      setLoading(false);
+      setProgress('');
     }
-    setLoading(false);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,7 +196,7 @@ export default function SchoolWideImport() {
     <div className="neo-box flex flex-col bg-white">
       <div className="p-4 border-b-4 border-neo-border bg-neo-yellow">
         <h2 className="text-xl font-black uppercase">School-Wide Roster Import</h2>
-        <p className="font-bold text-sm mt-1">Import the entire school's 3rd period CSV.</p>
+        <p className="font-bold text-sm mt-1">Import the entire school&apos;s 3rd period CSV.</p>
       </div>
       
       <div className="p-6 space-y-6">
@@ -153,9 +220,9 @@ export default function SchoolWideImport() {
             </h3>
             <p className="text-sm font-bold text-gray-500">
               Format: <br/>
-              "TeacherName, CourseName",,<br/>
+              &quot;TeacherName, CourseName&quot;,,<br/>
               Student Name,Destination,Attendance<br/>
-              "Student Name",Destination,
+              &quot;Student Name&quot;,Destination,
             </p>
             <textarea 
               className="neo-input w-full h-64 resize-none text-xs font-mono"
@@ -166,9 +233,19 @@ export default function SchoolWideImport() {
             <button 
               onClick={handleImport}
               disabled={loading || !csvText.trim()}
-              className="neo-button bg-neo-blue text-white px-6 py-3 w-full font-black uppercase disabled:opacity-50"
+              className="neo-button bg-neo-blue text-white px-6 py-3 w-full font-black uppercase disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {loading ? 'Processing...' : 'Import Data'}
+              {loading ? (
+                <>
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                  {progress || 'Processing...'}
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" />
+                  AI Import Data
+                </>
+              )}
             </button>
           </div>
 

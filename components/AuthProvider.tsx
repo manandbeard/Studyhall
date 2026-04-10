@@ -83,6 +83,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await updateDoc(studentDoc.ref, { thirdPeriodTeacherId: firebaseUser.uid });
               }
 
+              // Update all passes that referenced the old placeholder ID as origin
+              const passesOriginQ = query(collection(db, 'passes'), where('originTeacherId', '==', existingDoc.id));
+              const passesOriginSnapshot = await getDocs(passesOriginQ);
+              for (const passDoc of passesOriginSnapshot.docs) {
+                await updateDoc(passDoc.ref, { originTeacherId: firebaseUser.uid });
+              }
+
+              // Update all passes that referenced the old placeholder ID as destination
+              const passesDestQ = query(collection(db, 'passes'), where('destinationTeacherId', '==', existingDoc.id));
+              const passesDestSnapshot = await getDocs(passesDestQ);
+              for (const passDoc of passesDestSnapshot.docs) {
+                await updateDoc(passDoc.ref, { destinationTeacherId: firebaseUser.uid });
+              }
+
               setUser(newUser);
               setLoading(false);
               return;
@@ -112,7 +126,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      if (result.user.email && !result.user.email.endsWith('@nbend.k12.or.us')) {
+        await firebaseSignOut(auth);
+        throw new Error('Unauthorized School Domain. Please use your @nbend.k12.or.us email.');
+      }
     } catch (error) {
       console.error('Error signing in with Google', error);
       throw error;

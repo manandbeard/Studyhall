@@ -14,6 +14,9 @@ export default function IncomingPane() {
   const [selectedStudent, setSelectedStudent] = useState('');
   const [selectedOrigin, setSelectedOrigin] = useState('');
 
+  const [studentSearch, setStudentSearch] = useState('');
+  const [isStudentDropdownOpen, setIsStudentDropdownOpen] = useState(false);
+
   useEffect(() => {
     if (!user) return;
 
@@ -59,31 +62,49 @@ export default function IncomingPane() {
     };
   }, [user]);
 
-  const handleStudentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const studentId = e.target.value;
-    setSelectedStudent(studentId);
-    
-    // Auto-select origin teacher if student has a default 3rd period teacher
-    const student = students.find(s => s.id === studentId);
-    if (student && student.thirdPeriodTeacherId) {
-      setSelectedOrigin(student.thirdPeriodTeacherId);
-    } else {
-      setSelectedOrigin('');
-    }
-  };
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as Element).closest('.student-search-container')) {
+        setIsStudentDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedStudent || !selectedOrigin || !user) return;
+    if (!studentSearch.trim() || !selectedOrigin || !user) return;
 
-    const student = students.find(s => s.id === selectedStudent);
     const originTeacher = teachers.find(t => t.id === selectedOrigin);
-    if (!student || !originTeacher) return;
+    if (!originTeacher) return;
+
+    let studentId = selectedStudent;
+    let studentName = studentSearch.trim();
 
     try {
+      if (!studentId) {
+        const existingStudent = students.find(s => s.name.toLowerCase() === studentName.toLowerCase());
+        if (existingStudent) {
+          studentId = existingStudent.id;
+          studentName = existingStudent.name;
+        } else {
+          const newStudentRef = await addDoc(collection(db, 'students'), {
+            name: studentName,
+            thirdPeriodTeacherId: originTeacher.id,
+            notes: 'Created via pass request',
+            isAbsent: false
+          });
+          studentId = newStudentRef.id;
+        }
+      } else {
+        const student = students.find(s => s.id === studentId);
+        if (student) studentName = student.name;
+      }
+
       await addDoc(collection(db, 'passes'), {
-        studentId: student.id,
-        studentName: student.name,
+        studentId: studentId,
+        studentName: studentName,
         originTeacherId: originTeacher.id,
         destinationTeacherId: user.uid,
         destinationRoom: user.roomNumber,
@@ -91,6 +112,7 @@ export default function IncomingPane() {
         requestedAt: new Date().toISOString()
       });
       setSelectedStudent('');
+      setStudentSearch('');
       setSelectedOrigin('');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'passes');
@@ -127,19 +149,52 @@ export default function IncomingPane() {
       
       <div className="p-4 border-b-4 border-neo-border bg-gray-50">
         <form onSubmit={handleRequest} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 relative student-search-container">
             <label className="font-bold text-sm uppercase">1. Select Student</label>
-            <select 
-              className="neo-input cursor-pointer truncate"
-              value={selectedStudent}
-              onChange={handleStudentChange}
-              required
-            >
-              <option value="" disabled>Select Student...</option>
-              {students.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                className="neo-input w-full truncate"
+                placeholder="Search or type a student's name..."
+                value={studentSearch}
+                onChange={(e) => {
+                  setStudentSearch(e.target.value);
+                  setIsStudentDropdownOpen(true);
+                  setSelectedStudent('');
+                  setSelectedOrigin('');
+                }}
+                onFocus={() => setIsStudentDropdownOpen(true)}
+              />
+              {isStudentDropdownOpen && studentSearch && (
+                <div className="absolute z-20 w-full mt-1 bg-white border-4 border-neo-border max-h-48 overflow-y-auto shadow-lg">
+                  {students.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase())).length === 0 ? (
+                    <div className="p-2 text-sm text-gray-500 font-bold">No students found. A new student will be created.</div>
+                  ) : (
+                    students
+                      .filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()))
+                      .slice(0, 50) // Limit to 50 for performance
+                      .map(s => (
+                        <div 
+                          key={s.id} 
+                          className="p-2 hover:bg-neo-yellow cursor-pointer border-b-2 border-neo-border last:border-b-0 font-bold text-sm"
+                          onClick={() => {
+                            setSelectedStudent(s.id);
+                            setStudentSearch(s.name);
+                            setIsStudentDropdownOpen(false);
+                            if (s.thirdPeriodTeacherId) {
+                              setSelectedOrigin(s.thirdPeriodTeacherId);
+                            } else {
+                              setSelectedOrigin('');
+                            }
+                          }}
+                        >
+                          {s.name}
+                        </div>
+                      ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">
