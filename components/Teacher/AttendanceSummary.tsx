@@ -44,17 +44,6 @@ export default function AttendanceSummary() {
     const unsubscribeOutgoing = onSnapshot(qOutgoing, (snapshot) => {
       const outgoingPasses = snapshot.docs.map(doc => doc.data());
       setOutgoingActiveCount(outgoingPasses.length);
-      
-      // Calculate tardy from outgoing
-      const outgoingTardy = outgoingPasses.filter((p: any) => {
-        if (p.status === 'in_transit' && p.departedAt) {
-          return differenceInMinutes(currentTime, new Date(p.departedAt)) >= 5;
-        }
-        return false;
-      }).length;
-      
-      // We'll combine this with incoming tardy in a separate state or just calculate here
-      // But since we have two separate listeners, we'll need a way to merge them.
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'passes');
     });
@@ -79,11 +68,12 @@ export default function AttendanceSummary() {
     );
     const unsubscribeTardy = onSnapshot(qTardy, (snapshot) => {
       const allInTransit = snapshot.docs.map(doc => doc.data());
+      const now = new Date();
       const myTardy = allInTransit.filter((p: any) => {
         const isMine = p.originTeacherId === user.uid || p.destinationTeacherId === user.uid;
         if (!isMine) return false;
         if (!p.departedAt) return false;
-        return differenceInMinutes(currentTime, new Date(p.departedAt)) >= 5;
+        return differenceInMinutes(now, new Date(p.departedAt)) >= 5;
       });
       setTardyCount(myTardy.length);
     }, (error) => {
@@ -96,7 +86,7 @@ export default function AttendanceSummary() {
       unsubscribeIncoming();
       unsubscribeTardy();
     };
-  }, [user, currentTime]);
+  }, [user]);
 
   // Present = (Roster - Absent - OutgoingActive) + IncomingArrived
   const presentCount = (rosterCount - absentCount - outgoingActiveCount) + incomingArrivedCount;
