@@ -1,8 +1,23 @@
 import { useState } from 'react';
-import { collection, addDoc, getDocs, query, where, setDoc, doc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, setDoc, doc, writeBatch } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Upload, AlertCircle, CheckCircle2, FileText, Sparkles } from 'lucide-react';
-import { GoogleGenAI, Type } from '@google/genai';
+
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+async function parseRosterChunk(csvChunk: string, lastTeacher: string): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/api/gemini/parse-roster`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csvChunk, lastTeacher }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? `Server error: ${res.status}`);
+  }
+  const json = await res.json();
+  return json.data ?? [];
+}
 
 export default function SchoolWideImport() {
   const [csvText, setCsvText] = useState('');
@@ -20,67 +35,18 @@ export default function SchoolWideImport() {
     setProgress('Initializing AI...');
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('VITE_GEMINI_API_KEY is not set in the environment.');
-      }
-      const ai = new GoogleGenAI({ apiKey });
-
       const lines = csvText.split('\n').map((l: string) => l.trim()).filter((l: string) => l);
       const chunkSize = 100;
       let allParsedData: any[] = [];
-      let lastTeacher = "";
+      let lastTeacher = '';
 
       for (let i = 0; i < lines.length; i += chunkSize) {
         setProgress(`AI Parsing chunk ${Math.floor(i / chunkSize) + 1} of ${Math.ceil(lines.length / chunkSize)}...`);
-        const chunkLines = lines.slice(i, i + chunkSize);
-        const chunkText = chunkLines.join('\n');
-
-        const prompt = `
-        Parse the following CSV chunk of a school roster.
-        The previous chunk's last active teacher was: "${lastTeacher}". Use this teacher name for students at the beginning of this chunk if no new teacher name is specified before them.
-        Extract the teachers and their students. For the teacher name, extract just the name (e.g., "Helland" or "Smith, John"), ignoring course names.
-        CSV Chunk:
-        ${chunkText}
-        `;
-
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  teacherName: { type: Type.STRING },
-                  students: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        name: { type: Type.STRING },
-                        destination: { type: Type.STRING },
-                        isAbsent: { type: Type.BOOLEAN }
-                      },
-                      required: ["name", "destination", "isAbsent"]
-                    }
-                  }
-                },
-                required: ["teacherName", "students"]
-              }
-            }
-          }
-        });
-
-        const responseText = response.text;
-        if (responseText) {
-          const parsedChunk = JSON.parse(responseText);
-          allParsedData = [...allParsedData, ...parsedChunk];
-          if (parsedChunk.length > 0) {
-            lastTeacher = parsedChunk[parsedChunk.length - 1].teacherName;
-          }
+        const chunkText = lines.slice(i, i + chunkSize).join('\n');
+        const parsedChunk = await parseRosterChunk(chunkText, lastTeacher);
+        allParsedData = [...allParsedData, ...parsedChunk];
+        if (parsedChunk.length > 0) {
+          lastTeacher = parsedChunk[parsedChunk.length - 1].teacherName;
         }
       }
 
@@ -96,7 +62,6 @@ export default function SchoolWideImport() {
       setProgress('Importing to database...');
       let importedStudents = 0;
       let importedTeachers = 0;
-
       const teacherIdCache = new Map<string, string>();
 
       for (const [teacherName, students] of Array.from(teacherMap.entries())) {
@@ -157,9 +122,7 @@ export default function SchoolWideImport() {
           }
         }
 
-        if (opCount > 0) {
-          await batch.commit();
-        }
+        if (opCount > 0) await batch.commit();
       }
 
       setMessage({ text: `Successfully imported ${importedStudents} students and created ${importedTeachers} placeholder teachers.`, type: 'success' });
@@ -176,12 +139,8 @@ export default function SchoolWideImport() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      setCsvText(content);
-    };
+    reader.onload = (event) => setCsvText(event.target?.result as string);
     reader.readAsText(file);
     e.target.value = '';
   };
@@ -230,15 +189,9 @@ export default function SchoolWideImport() {
               className="neo-button bg-neo-blue text-white px-6 py-3 w-full font-black uppercase disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? (
-                <>
-                  <Sparkles className="w-5 h-5 animate-pulse" />
-                  {progress || 'Processing...'}
-                </>
+                <><Sparkles className="w-5 h-5 animate-pulse" />{progress || 'Processing...'}</>
               ) : (
-                <>
-                  <Sparkles className="w-5 h-5" />
-                  AI Import Data
-                </>
+                <><Sparkles className="w-5 h-5" />AI Import Data</>
               )}
             </button>
           </div>

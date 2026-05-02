@@ -12,10 +12,15 @@ export default function AttendanceSummary() {
   const [absentCount, setAbsentCount] = useState(0);
   const [outgoingActiveCount, setOutgoingActiveCount] = useState(0);
   const [incomingArrivedCount, setIncomingArrivedCount] = useState(0);
-  const [tardyCount, setTardyCount] = useState(0);
+  const [inTransitPasses, setInTransitPasses] = useState<any[]>([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  const tardyCount = inTransitPasses.filter(p =>
+    differenceInMinutes(currentTime, new Date(p.departedAt)) >= 5
+  ).length;
 
   useEffect(() => {
-    const interval = setInterval(() => {}, 30000);
+    const interval = setInterval(() => setCurrentTime(new Date()), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -60,15 +65,13 @@ export default function AttendanceSummary() {
       where('status', '==', 'in_transit')
     );
     const unsubscribeTardy = onSnapshot(qTardy, (snapshot) => {
-      const allInTransit = snapshot.docs.map(doc => doc.data());
-      const now = new Date();
-      const myTardy = allInTransit.filter((p: any) => {
-        const isMine = p.originTeacherId === user.uid || p.destinationTeacherId === user.uid;
-        if (!isMine) return false;
-        if (!p.departedAt) return false;
-        return differenceInMinutes(now, new Date(p.departedAt)) >= 5;
-      });
-      setTardyCount(myTardy.length);
+      const myPasses = snapshot.docs
+        .map(doc => doc.data())
+        .filter((p: any) => {
+          const isMine = p.originTeacherId === user.uid || p.destinationTeacherId === user.uid;
+          return isMine && !!p.departedAt;
+        });
+      setInTransitPasses(myPasses);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'passes');
     });
