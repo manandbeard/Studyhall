@@ -75,7 +75,6 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@google/genai": "^1.51.0",
     "firebase": "^12.12.1"
   }
 }

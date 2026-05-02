@@ -3,7 +3,36 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 const router = Router();
 
+const requestCounts = new Map<string, { count: number; resetAt: number }>();
+
+function isRateLimited(ip: string, maxPerMinute = 10): boolean {
+  const now = Date.now();
+  const entry = requestCounts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    requestCounts.set(ip, { count: 1, resetAt: now + 60_000 });
+    return false;
+  }
+  if (entry.count >= maxPerMinute) return true;
+  entry.count++;
+  return false;
+}
+
 router.post("/gemini/parse-roster", async (req, res) => {
+  const origin = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim()
+    ?? req.socket.remoteAddress
+    ?? "unknown";
+
+  if (isRateLimited(origin)) {
+    res.status(429).json({ error: "Too many requests. Please wait before retrying." });
+    return;
+  }
+
+  const authHeader = req.headers["x-internal-token"];
+  const expectedToken = process.env.INTERNAL_API_TOKEN;
+  if (expectedToken && authHeader !== expectedToken) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
