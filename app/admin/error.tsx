@@ -1,6 +1,7 @@
 'use client';
 
 import { AlertCircle } from 'lucide-react';
+import Link from 'next/link';
 
 export default function AdminError({
   error,
@@ -24,12 +25,12 @@ export default function AdminError({
           >
             Try Again
           </button>
-          <a
+          <Link
             href="/"
             className="neo-button bg-gray-100 px-6 py-3 font-black uppercase"
           >
             Return Home
-          </a>
+          </Link>
         </div>
       </div>
     </div>
