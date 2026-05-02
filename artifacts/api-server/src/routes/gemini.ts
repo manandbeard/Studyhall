@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
-import { initializeApp, getApps, cert, App } from "firebase-admin/app";
+import { initializeApp, getApps, App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
 const router = Router();
+
+const ADMIN_EMAIL = "nhelland@nbend.k12.or.us";
 
 let adminApp: App;
 
@@ -43,11 +45,18 @@ router.post("/gemini/parse-roster", async (req, res) => {
 
   const idToken = authHeader.slice("Bearer ".length);
   let uid: string;
+  let email: string | undefined;
   try {
     const decoded = await getAuth(getAdminApp()).verifyIdToken(idToken);
     uid = decoded.uid;
+    email = decoded.email;
   } catch {
     res.status(401).json({ error: "Invalid Firebase ID token." });
+    return;
+  }
+
+  if (email !== ADMIN_EMAIL) {
+    res.status(403).json({ error: "Admin access required." });
     return;
   }
 
