@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Study Hall Tracker"
+version = "1.0.0"
+id = "artifacts/study-hall-tracker"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18763
+
+[services.development]
+run = "pnpm --filter @workspace/study-hall-tracker run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/study-hall-tracker", "run", "build" ]
+publicDir = "artifacts/study-hall-tracker/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18763"
+BASE_PATH = "/"

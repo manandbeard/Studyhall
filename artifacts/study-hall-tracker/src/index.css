@@ -1,0 +1,32 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-neo-yellow: #FFD500;
+  --color-neo-blue: #4D9FFF;
+  --color-neo-green: #00E676;
+  --color-neo-red: #FF3D00;
+  --color-neo-bg: #F4F4F0;
+  --color-neo-border: #111111;
+}
+
+@layer base {
+  body {
+    @apply bg-neo-bg text-neo-border font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .neo-box {
+    @apply border-4 border-neo-border shadow-[6px_6px_0px_0px_rgba(17,17,17,1)] bg-white;
+  }
+  .neo-button {
+    @apply border-4 border-neo-border shadow-[4px_4px_0px_0px_rgba(17,17,17,1)] font-bold uppercase tracking-wider transition-transform active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .neo-input {
+    @apply border-4 border-neo-border bg-white px-4 py-2 font-bold focus:outline-none focus:ring-4 focus:ring-neo-blue;
+  }
+}
