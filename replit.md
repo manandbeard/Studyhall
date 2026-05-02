@@ -38,7 +38,7 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - **Design**: Neo-brutalist (bold black borders, yellow/blue/green/red accents, white backgrounds)
 - **Key dependencies**: `firebase`, `date-fns`, `wouter` (routing), `lucide-react`
 - **Env vars**: None required in the frontend (Gemini calls are proxied through the API server)
-- **API server dependency**: The admin "Bulk Import" feature calls `POST /api/gemini/parse-roster` on the API server, which requires `GEMINI_API_KEY` to be set server-side
+- **API server dependency**: The admin "Bulk Import" feature calls `POST /api/gemini/parse-roster` on the API server — requires `GEMINI_API_KEY` (server env var). Requests are authenticated via Firebase ID token (`Authorization: Bearer <token>`) and rate-limited to 10 req/min per user.
 - **Routes**:
   - `/` — LoginPage (Google sign-in)
   - `/teacher` — TeacherDashboard (pass requests, roster, attendance)

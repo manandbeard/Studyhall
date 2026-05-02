@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import { collection, getDocs, query, where, setDoc, doc, writeBatch } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { db, auth } from '@/firebase';
 import { Upload, AlertCircle, CheckCircle2, FileText, Sparkles } from 'lucide-react';
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 async function parseRosterChunk(csvChunk: string, lastTeacher: string): Promise<any[]> {
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) throw new Error('Not authenticated. Please sign in again.');
+
   const res = await fetch(`${API_BASE}/api/gemini/parse-roster`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`,
+    },
     body: JSON.stringify({ csvChunk, lastTeacher }),
   });
   if (!res.ok) {

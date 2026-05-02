@@ -1,15 +1,32 @@
 import { Router } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
+import { initializeApp, getApps, cert, App } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 
 const router = Router();
 
+let adminApp: App;
+
+function getAdminApp(): App {
+  if (!adminApp) {
+    if (getApps().length === 0) {
+      adminApp = initializeApp({
+        projectId: "studentprojector",
+      });
+    } else {
+      adminApp = getApps()[0];
+    }
+  }
+  return adminApp;
+}
+
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
-function isRateLimited(ip: string, maxPerMinute = 10): boolean {
+function isRateLimited(key: string, maxPerMinute = 10): boolean {
   const now = Date.now();
-  const entry = requestCounts.get(ip);
+  const entry = requestCounts.get(key);
   if (!entry || now > entry.resetAt) {
-    requestCounts.set(ip, { count: 1, resetAt: now + 60_000 });
+    requestCounts.set(key, { count: 1, resetAt: now + 60_000 });
     return false;
   }
   if (entry.count >= maxPerMinute) return true;
@@ -18,21 +35,27 @@ function isRateLimited(ip: string, maxPerMinute = 10): boolean {
 }
 
 router.post("/gemini/parse-roster", async (req, res) => {
-  const origin = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim()
-    ?? req.socket.remoteAddress
-    ?? "unknown";
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Missing or invalid Authorization header." });
+    return;
+  }
 
-  if (isRateLimited(origin)) {
+  const idToken = authHeader.slice("Bearer ".length);
+  let uid: string;
+  try {
+    const decoded = await getAuth(getAdminApp()).verifyIdToken(idToken);
+    uid = decoded.uid;
+  } catch {
+    res.status(401).json({ error: "Invalid Firebase ID token." });
+    return;
+  }
+
+  if (isRateLimited(uid)) {
     res.status(429).json({ error: "Too many requests. Please wait before retrying." });
     return;
   }
 
-  const authHeader = req.headers["x-internal-token"];
-  const expectedToken = process.env.INTERNAL_API_TOKEN;
-  if (expectedToken && authHeader !== expectedToken) {
-    res.status(401).json({ error: "Unauthorized." });
-    return;
-  }
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
@@ -92,8 +115,7 @@ ${csvChunk}
       return;
     }
 
-    const parsed = JSON.parse(text);
-    res.json({ data: parsed });
+    res.json({ data: JSON.parse(text) });
   } catch (err: any) {
     res.status(500).json({ error: err.message ?? "Gemini request failed." });
   }
