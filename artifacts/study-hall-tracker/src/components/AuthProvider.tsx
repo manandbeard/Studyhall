@@ -1,9 +1,31 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { User as FirebaseUser, signInWithPopup, GoogleAuthProvider, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  User as FirebaseUser,
+  AuthError,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider,
+  signOut as firebaseSignOut,
+} from 'firebase/auth';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  deleteDoc,
+  writeBatch,
+  QueryDocumentSnapshot,
+  DocumentData,
+} from 'firebase/firestore';
 import { auth, db } from '@/firebase';
 
 export const SCHOOL_DOMAIN = 'nbend.k12.or.us';
+export const ADMIN_EMAIL = `nhelland@${SCHOOL_DOMAIN}`;
 
 export type AppRole = 'teacher' | 'admin';
 
@@ -20,6 +42,7 @@ export interface AppUser {
 interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
+  signingIn: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -27,128 +50,217 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  signingIn: false,
   signIn: async () => {},
   signOut: async () => {},
 });
 
+function isInIframe(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
+function buildGoogleProvider(): GoogleAuthProvider {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({
+    hd: SCHOOL_DOMAIN,
+    prompt: 'select_account',
+  });
+  return provider;
+}
+
+const BATCH_LIMIT = 450;
+
+async function migrateReferences(
+  oldUid: string,
+  newUid: string,
+): Promise<void> {
+  const [studentsSnapshot, passesOriginSnapshot, passesDestSnapshot] =
+    await Promise.all([
+      getDocs(
+        query(
+          collection(db, 'students'),
+          where('thirdPeriodTeacherId', '==', oldUid),
+        ),
+      ),
+      getDocs(
+        query(
+          collection(db, 'passes'),
+          where('originTeacherId', '==', oldUid),
+        ),
+      ),
+      getDocs(
+        query(
+          collection(db, 'passes'),
+          where('destinationTeacherId', '==', oldUid),
+        ),
+      ),
+    ]);
+
+  const updates: { ref: ReturnType<typeof doc>; data: Record<string, unknown> }[] = [];
+  for (const d of studentsSnapshot.docs) {
+    updates.push({ ref: d.ref, data: { thirdPeriodTeacherId: newUid } });
+  }
+  for (const d of passesOriginSnapshot.docs) {
+    updates.push({ ref: d.ref, data: { originTeacherId: newUid } });
+  }
+  for (const d of passesDestSnapshot.docs) {
+    updates.push({ ref: d.ref, data: { destinationTeacherId: newUid } });
+  }
+
+  for (let i = 0; i < updates.length; i += BATCH_LIMIT) {
+    const batch = writeBatch(db);
+    for (const { ref, data } of updates.slice(i, i + BATCH_LIMIT)) {
+      batch.update(ref, data);
+    }
+    await batch.commit();
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser: FirebaseUser | null) => {
-      try {
-        if (firebaseUser) {
+    getRedirectResult(auth).catch((err) => {
+      console.error('Redirect sign-in error:', err);
+    });
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(
+      async (firebaseUser: FirebaseUser | null) => {
+        try {
+          if (!firebaseUser) {
+            setUser(null);
+            return;
+          }
+
+          if (!firebaseUser.email?.endsWith(`@${SCHOOL_DOMAIN}`)) {
+            console.warn(
+              'Sign-in rejected: non-school domain',
+              firebaseUser.email,
+            );
+            await firebaseSignOut(auth);
+            setUser(null);
+            return;
+          }
+
           const userDocRef = doc(db, 'users', firebaseUser.uid);
           const userDoc = await getDoc(userDocRef);
 
           if (userDoc.exists()) {
             const userData = userDoc.data() as AppUser;
-            if (firebaseUser.email === `nhelland@${SCHOOL_DOMAIN}` && userData.role !== 'admin') {
+            if (firebaseUser.email === ADMIN_EMAIL && userData.role !== 'admin') {
               userData.role = 'admin';
               await updateDoc(userDocRef, { role: 'admin' });
             }
             setUser(userData);
-          } else {
-            if (firebaseUser.email) {
-              const { collection, query, where, getDocs } = await import('firebase/firestore');
-              const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
-              const snapshot = await getDocs(q);
+            return;
+          }
 
-              if (!snapshot.empty) {
-                const existingDoc = snapshot.docs[0];
-                const userData = existingDoc.data() as AppUser;
-
-                const newUser: AppUser = {
-                  ...userData,
-                  uid: firebaseUser.uid,
-                  name: firebaseUser.displayName || userData.name,
-                  role: firebaseUser.email === `nhelland@${SCHOOL_DOMAIN}` ? 'admin' : userData.role,
-                };
-
-                await setDoc(userDocRef, newUser);
-
-                const { deleteDoc } = await import('firebase/firestore');
-                try {
-                  await deleteDoc(existingDoc.ref);
-                } catch (err) {
-                  console.error('Failed to delete old placeholder doc:', err);
-                }
-
-                try {
-                  const studentsQ = query(collection(db, 'students'), where('thirdPeriodTeacherId', '==', existingDoc.id));
-                  const studentsSnapshot = await getDocs(studentsQ);
-                  for (const studentDoc of studentsSnapshot.docs) {
-                    await updateDoc(studentDoc.ref, { thirdPeriodTeacherId: firebaseUser.uid });
-                  }
-                } catch (err) {
-                  console.error('Failed to migrate student references:', err);
-                }
-
-                try {
-                  const passesOriginQ = query(collection(db, 'passes'), where('originTeacherId', '==', existingDoc.id));
-                  const passesOriginSnapshot = await getDocs(passesOriginQ);
-                  for (const passDoc of passesOriginSnapshot.docs) {
-                    await updateDoc(passDoc.ref, { originTeacherId: firebaseUser.uid });
-                  }
-                } catch (err) {
-                  console.error('Failed to migrate origin pass references:', err);
-                }
-
-                try {
-                  const passesDestQ = query(collection(db, 'passes'), where('destinationTeacherId', '==', existingDoc.id));
-                  const passesDestSnapshot = await getDocs(passesDestQ);
-                  for (const passDoc of passesDestSnapshot.docs) {
-                    await updateDoc(passDoc.ref, { destinationTeacherId: firebaseUser.uid });
-                  }
-                } catch (err) {
-                  console.error('Failed to migrate destination pass references:', err);
-                }
-
-                setUser(newUser);
-                setLoading(false);
-                return;
-              }
+          let placeholderDoc:
+            | QueryDocumentSnapshot<DocumentData>
+            | null = null;
+          try {
+            const placeholderQ = query(
+              collection(db, 'users'),
+              where('email', '==', firebaseUser.email),
+            );
+            const snapshot = await getDocs(placeholderQ);
+            if (!snapshot.empty) {
+              placeholderDoc = snapshot.docs[0];
             }
+          } catch (err) {
+            console.error('Failed to look up placeholder user doc:', err);
+            throw err;
+          }
 
+          if (placeholderDoc) {
+            const existingData = placeholderDoc.data() as AppUser;
             const newUser: AppUser = {
+              ...existingData,
               uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              name: firebaseUser.displayName || 'Unknown User',
-              role: firebaseUser.email === `nhelland@${SCHOOL_DOMAIN}` ? 'admin' : 'teacher',
-              roomNumber: 'TBD',
+              email: firebaseUser.email,
+              name: firebaseUser.displayName || existingData.name,
+              role:
+                firebaseUser.email === ADMIN_EMAIL
+                  ? 'admin'
+                  : existingData.role,
             };
             await setDoc(userDocRef, newUser);
+
+            try {
+              await migrateReferences(placeholderDoc.id, firebaseUser.uid);
+              await deleteDoc(placeholderDoc.ref);
+            } catch (err) {
+              console.error(
+                'Placeholder migration failed; leaving placeholder doc in place for retry:',
+                err,
+              );
+            }
+
             setUser(newUser);
+            return;
           }
-        } else {
+
+          const newUser: AppUser = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName || 'Unknown User',
+            role:
+              firebaseUser.email === ADMIN_EMAIL ? 'admin' : 'teacher',
+            roomNumber: 'TBD',
+          };
+          await setDoc(userDocRef, newUser);
+          setUser(newUser);
+        } catch (err) {
+          console.error('Error in auth state handler:', err);
           setUser(null);
+        } finally {
+          setLoading(false);
         }
-      } catch (err) {
-        console.error('Error in auth state handler:', err);
-        setUser(null);
-      }
-      setLoading(false);
-    });
+      },
+    );
 
     return () => unsubscribe();
   }, []);
 
-  const signIn = async () => {
-    const provider = new GoogleAuthProvider();
+  const signIn = async (): Promise<void> => {
+    setSigningIn(true);
+    const provider = buildGoogleProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
-      if (result.user.email && !result.user.email.endsWith(`@${SCHOOL_DOMAIN}`)) {
-        await firebaseSignOut(auth);
-        throw new Error(`Unauthorized School Domain. Please use your @${SCHOOL_DOMAIN} email.`);
+      if (isInIframe()) {
+        await signInWithRedirect(auth, provider);
+        return;
       }
+      await signInWithPopup(auth, provider);
     } catch (error) {
+      const authErr = error as AuthError;
+      if (
+        authErr.code === 'auth/popup-blocked' ||
+        authErr.code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        try {
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectErr) {
+          console.error('Redirect fallback failed:', redirectErr);
+          throw redirectErr;
+        }
+      }
       console.error('Error signing in with Google', error);
       throw error;
+    } finally {
+      setSigningIn(false);
     }
   };
 
-  const signOut = async () => {
+  const signOut = async (): Promise<void> => {
     try {
       await firebaseSignOut(auth);
     } catch (error) {
@@ -157,7 +269,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
+    <AuthContext.Provider
+      value={{ user, loading, signingIn, signIn, signOut }}
+    >
       {children}
     </AuthContext.Provider>
   );

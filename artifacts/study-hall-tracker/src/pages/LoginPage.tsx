@@ -1,10 +1,31 @@
 import { useAuth } from '@/components/AuthProvider';
 import { useLocation } from 'wouter';
 import { useEffect, useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
+
+function formatAuthError(err: unknown): string {
+  const code = (err as { code?: string })?.code;
+  switch (code) {
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorized for sign-in. An admin needs to add this URL to Firebase Console → Authentication → Settings → Authorized domains.';
+    case 'auth/popup-blocked':
+      return 'Your browser blocked the sign-in popup. Please allow popups for this site, or open the app in a new tab.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Sign-in was cancelled. Please try again.';
+    case 'auth/operation-not-allowed':
+      return 'Google sign-in is not enabled for this Firebase project.';
+    case 'auth/operation-not-supported-in-this-environment':
+      return 'Sign-in is not supported in this browser context. Try opening the app in a new tab.';
+    case 'auth/network-request-failed':
+      return 'Network error. If you are viewing this in a preview iframe, your browser may be blocking third-party cookies. Click "Open in New Tab" at the top right of the preview window.';
+    default:
+      return (err as { message?: string })?.message || 'Failed to sign in.';
+  }
+}
 
 export default function LoginPage() {
-  const { user, loading, signIn } = useAuth();
+  const { user, loading, signingIn, signIn } = useAuth();
   const [, setLocation] = useLocation();
   const [error, setError] = useState<string | null>(null);
 
@@ -22,12 +43,8 @@ export default function LoginPage() {
     setError(null);
     try {
       await signIn();
-    } catch (err: any) {
-      if (err.message?.includes('network-request-failed')) {
-        setError('Network error: If you are viewing this in a preview iframe, your browser might be blocking third-party cookies. Please click the "Open in New Tab" button at the top right of the preview window to sign in.');
-      } else {
-        setError(err.message || 'Failed to sign in.');
-      }
+    } catch (err) {
+      setError(formatAuthError(err));
     }
   };
 
@@ -60,9 +77,17 @@ export default function LoginPage() {
 
         <button
           onClick={handleSignIn}
-          className="neo-button bg-neo-blue text-white py-4 px-8 w-full text-lg"
+          disabled={signingIn}
+          className="neo-button bg-neo-blue text-white py-4 px-8 w-full text-lg flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Sign in with Google
+          {signingIn ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Signing in...
+            </>
+          ) : (
+            'Sign in with Google'
+          )}
         </button>
       </div>
     </div>
