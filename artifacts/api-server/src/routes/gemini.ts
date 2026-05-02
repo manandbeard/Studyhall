@@ -5,7 +5,7 @@ import { getAuth } from "firebase-admin/auth";
 
 const router = Router();
 
-const ADMIN_EMAIL = "nhelland@nbend.k12.or.us";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "nhelland@nbend.k12.or.us";
 
 let adminApp: App;
 

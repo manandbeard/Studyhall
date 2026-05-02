@@ -24,8 +24,10 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/firebase';
 
-export const SCHOOL_DOMAIN = 'nbend.k12.or.us';
-export const ADMIN_EMAIL = `nhelland@${SCHOOL_DOMAIN}`;
+export const SCHOOL_DOMAIN =
+  import.meta.env.VITE_SCHOOL_DOMAIN ?? 'nbend.k12.or.us';
+export const ADMIN_EMAIL =
+  import.meta.env.VITE_ADMIN_EMAIL ?? `nhelland@${SCHOOL_DOMAIN}`;
 
 export type AppRole = 'teacher' | 'admin';
 
