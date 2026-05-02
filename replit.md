@@ -46,7 +46,9 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - **Roles**: `teacher` | `admin` (admin: `nhelland@nbend.k12.or.us`)
 
 ### API Server (`artifacts/api-server`)
-- Pre-existing scaffold; not used by Study Hall Tracker (purely Firebase frontend)
+- **Port**: 8080
+- **Required env var**: `GEMINI_API_KEY` — needed for the Admin Bulk Import feature
+- Used by Study Hall Tracker: the Admin "Bulk Import" tab calls `POST /api/gemini/parse-roster` to AI-parse school roster CSVs. Requests require a valid Firebase ID token in the `Authorization: Bearer` header and are rate-limited to 10 req/min per user.
 
 ### Canvas / Mockup Sandbox (`artifacts/mockup-sandbox`)
 - Pre-existing design tooling scaffold
