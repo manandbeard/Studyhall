@@ -40,6 +40,7 @@ export interface AppUser {
   phoneNumber?: string;
   isAway?: boolean;
   studyHallCapacity?: number;
+  soundMuted?: boolean;
 }
 
 interface AuthContextType {

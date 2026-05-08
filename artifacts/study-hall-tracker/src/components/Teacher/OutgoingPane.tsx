@@ -1,15 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { differenceInMinutes } from 'date-fns';
+import { useNotifications } from '@/contexts/NotificationContext';
 
 export default function OutgoingPane() {
   const { user } = useAuth();
+  const { playPing } = useNotifications();
   const [passes, setPasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const arrivedSeenRef = useRef<Set<string>>(new Set());
+  const arrivedInitialized = useRef(false);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 30000);
@@ -22,25 +26,56 @@ export default function OutgoingPane() {
     const q = query(
       collection(db, 'passes'),
       where('originTeacherId', '==', user.uid),
-      where('status', 'in', ['pending', 'in_transit'])
+      where('status', 'in', ['pending', 'in_transit']),
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const passData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPasses(passData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'passes');
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const passData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setPasses(passData);
+        setLoading(false);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'passes');
+      },
+    );
 
     return () => unsubscribe();
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    arrivedInitialized.current = false;
+
+    const q = query(
+      collection(db, 'passes'),
+      where('originTeacherId', '==', user.uid),
+      where('status', '==', 'arrived'),
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      if (!arrivedInitialized.current) {
+        arrivedInitialized.current = true;
+        snapshot.docs.forEach((d) => arrivedSeenRef.current.add(d.id));
+        return;
+      }
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'added' && !arrivedSeenRef.current.has(change.doc.id)) {
+          arrivedSeenRef.current.add(change.doc.id);
+          playPing('arrived');
+        }
+      }
+    });
+
+    return unsub;
+  }, [user?.uid, playPing]);
 
   const handleSend = async (passId: string) => {
     try {
       await updateDoc(doc(db, 'passes', passId), {
         status: 'in_transit',
-        departedAt: new Date().toISOString()
+        departedAt: new Date().toISOString(),
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `passes/${passId}`);
@@ -49,8 +84,7 @@ export default function OutgoingPane() {
 
   const isOverdue = (departedAt: string) => {
     if (!departedAt) return false;
-    const diff = differenceInMinutes(currentTime, new Date(departedAt));
-    return diff >= 5;
+    return differenceInMinutes(currentTime, new Date(departedAt)) >= 5;
   };
 
   return (
@@ -64,10 +98,19 @@ export default function OutgoingPane() {
         ) : passes.length === 0 ? (
           <p className="font-bold text-gray-500">No pending requests.</p>
         ) : (
-          passes.map(pass => {
+          passes.map((pass) => {
             const overdue = pass.status === 'in_transit' && isOverdue(pass.departedAt);
             return (
-              <div key={pass.id} className={`border-4 border-neo-border p-4 ${pass.status === 'pending' ? 'bg-white' : (overdue ? 'bg-neo-red text-white animate-pulse' : 'bg-neo-blue text-white')}`}>
+              <div
+                key={pass.id}
+                className={`border-4 border-neo-border p-4 ${
+                  pass.status === 'pending'
+                    ? 'bg-white'
+                    : overdue
+                    ? 'bg-neo-red text-white animate-pulse'
+                    : 'bg-neo-blue text-white'
+                }`}
+              >
                 <div className="flex justify-between items-center">
                   <div>
                     <p className="font-black text-lg">{pass.studentName}</p>

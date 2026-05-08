@@ -176,7 +176,14 @@ export default function IncomingPane() {
         }
       } else {
         const student = students.find((s: any) => s.id === studentId);
-        if (student) studentName = student.name;
+        if (student) {
+          studentName = student.name;
+          if (student.isAbsent) {
+            setSubmitError(`${student.name} is absent today and cannot receive a pass.`);
+            setSubmitting(false);
+            return;
+          }
+        }
       }
 
       await createPass(studentId, studentName, originTeacher.id);

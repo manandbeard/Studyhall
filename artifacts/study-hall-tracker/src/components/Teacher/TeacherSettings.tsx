@@ -11,16 +11,19 @@ import {
 import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
-import { Save, User, Phone, MapPin, Bell, Power, Users, RefreshCw } from 'lucide-react';
+import { Save, User, Phone, MapPin, Bell, BellOff, Power, Users, RefreshCw } from 'lucide-react';
+import { useNotifications } from '@/contexts/NotificationContext';
 
 export default function TeacherSettings() {
   const { user } = useAuth();
+  const { soundMuted: liveMuted } = useNotifications();
   const [formData, setFormData] = useState({
     name: user?.name || '',
     roomNumber: user?.roomNumber || '',
     phoneNumber: user?.phoneNumber || '',
     isAway: user?.isAway || false,
     studyHallCapacity: user?.studyHallCapacity ?? 0,
+    soundMuted: user?.soundMuted ?? false,
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -40,6 +43,7 @@ export default function TeacherSettings() {
         phoneNumber: formData.phoneNumber,
         isAway: formData.isAway,
         studyHallCapacity: formData.studyHallCapacity,
+        soundMuted: formData.soundMuted,
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -79,6 +83,8 @@ export default function TeacherSettings() {
       setClearingAbsent(false);
     }
   };
+
+  const isMuted = formData.soundMuted;
 
   return (
     <div className="neo-box bg-white overflow-hidden">
@@ -179,17 +185,29 @@ export default function TeacherSettings() {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between opacity-50 cursor-not-allowed">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full border-2 border-neo-border bg-gray-200">
-                    <Bell className="w-4 h-4" />
+                  <div className={`p-2 rounded-full border-2 border-neo-border ${isMuted ? 'bg-gray-400' : 'bg-neo-blue'}`}>
+                    {isMuted ? (
+                      <BellOff className="w-4 h-4 text-white" />
+                    ) : (
+                      <Bell className="w-4 h-4 text-white" />
+                    )}
                   </div>
                   <div>
                     <p className="font-black text-sm uppercase">Sound Alerts</p>
-                    <p className="text-xs font-bold text-gray-500">Coming in Phase 2</p>
+                    <p className="text-xs font-bold text-gray-500">
+                      {isMuted ? 'All audio pings are muted' : 'Pings on new requests, arrivals & overdue'}
+                    </p>
                   </div>
                 </div>
-                <div className="w-12 h-6 bg-gray-300 rounded-full border-2 border-neo-border"></div>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, soundMuted: !formData.soundMuted })}
+                  className={`neo-button px-4 py-1 text-xs font-black uppercase ${isMuted ? 'bg-gray-400 text-white' : 'bg-neo-blue text-white'}`}
+                >
+                  {isMuted ? 'Muted' : 'On'}
+                </button>
               </div>
             </div>
 
@@ -215,6 +233,12 @@ export default function TeacherSettings() {
                 )}
               </div>
             </div>
+
+            {liveMuted && (
+              <div className="p-3 bg-neo-yellow/20 border-2 border-neo-yellow font-bold text-xs text-neo-border">
+                Sound is currently muted. Save settings to persist the change.
+              </div>
+            )}
 
             <div className="p-4 bg-neo-yellow/10 border-2 border-dashed border-neo-yellow rounded-lg">
               <p className="text-xs font-bold text-neo-yellow-dark">
