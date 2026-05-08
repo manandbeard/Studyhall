@@ -4,7 +4,6 @@ import { db } from '@/firebase';
 import {
   computeTeacherAnalytics,
   EMPTY_ANALYTICS,
-  filterLast30Days,
   type TeacherAnalyticsResult,
 } from '@/lib/analytics';
 
@@ -32,42 +31,35 @@ export function useTeacherAnalytics(
     const fetch = async () => {
       setLoading(true);
       try {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        const cutoffISO = cutoff.toISOString();
+
         const [destSnap, origSnap] = await Promise.all([
           getDocs(
             query(
               collection(db, 'passes'),
               where('destinationTeacherId', '==', uid),
-              where('status', '==', 'completed'),
+              where('completedAt', '>=', cutoffISO),
             ),
           ),
           getDocs(
             query(
               collection(db, 'passes'),
               where('originTeacherId', '==', uid),
-              where('status', '==', 'completed'),
+              where('completedAt', '>=', cutoffISO),
             ),
           ),
         ]);
 
         if (cancelled) return;
 
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - days);
-        const cutoffISO = cutoff.toISOString();
-
-        const incoming = destSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }) as Record<string, unknown>)
-          .filter((p) => {
-            const at = (p['completedAt'] ?? p['requestedAt']) as string | undefined;
-            return at && at >= cutoffISO;
-          });
-
-        const outgoing = origSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }) as Record<string, unknown>)
-          .filter((p) => {
-            const at = (p['completedAt'] ?? p['requestedAt']) as string | undefined;
-            return at && at >= cutoffISO;
-          });
+        const incoming = destSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Record<string, unknown>,
+        );
+        const outgoing = origSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Record<string, unknown>,
+        );
 
         setResult(computeTeacherAnalytics(incoming, outgoing));
       } catch (err) {

@@ -30,7 +30,7 @@ function TopList({ items, label }: { items: { name: string; count: number }[]; l
     <div>
       <p className="font-black uppercase text-xs text-gray-500 mb-1">{label}</p>
       <ol className="space-y-1">
-        {items.slice(0, 3).map((s, i) => (
+        {items.slice(0, 5).map((s, i) => (
           <li key={s.name} className="flex justify-between text-xs font-bold border border-neo-border px-2 py-1 bg-white">
             <span><span className="text-gray-400 mr-1">#{i + 1}</span>{s.name}</span>
             <span className="font-black">{s.count}</span>
