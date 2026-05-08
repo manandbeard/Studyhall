@@ -47,41 +47,39 @@ export default function AdminDashboard() {
 
     try {
       const activePassStatuses = ['pending', 'in_transit', 'arrived'];
-      const passesSnap = await getDocs(
-        query(collection(db, 'passes'), where('status', 'in', activePassStatuses)),
-      );
+      const [passesSnap, studentsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'passes'), where('status', 'in', activePassStatuses))),
+        getDocs(query(collection(db, 'students'), where('isAbsent', '==', true))),
+      ]);
       const totalPasses = passesSnap.size;
+      const now = new Date().toISOString();
+
+      const teacherPassCounts: Record<string, number> = {};
+      for (const passDoc of passesSnap.docs) {
+        const data = passDoc.data();
+        if (data.originTeacherId) {
+          teacherPassCounts[data.originTeacherId] = (teacherPassCounts[data.originTeacherId] ?? 0) + 1;
+        }
+        if (data.destinationTeacherId && data.destinationTeacherId !== data.originTeacherId) {
+          teacherPassCounts[data.destinationTeacherId] = (teacherPassCounts[data.destinationTeacherId] ?? 0) + 1;
+        }
+      }
 
       let batch = writeBatch(db);
       let writeCount = 0;
-      const now = new Date().toISOString();
-
       for (const passDoc of passesSnap.docs) {
-        batch.update(passDoc.ref, {
-          status: 'completed',
-          completedAt: now,
-          archivedBy: 'daily_reset',
-        });
+        batch.update(passDoc.ref, { status: 'completed', completedAt: now, archivedBy: 'daily_reset' });
         writeCount++;
-        if (writeCount % BATCH_SIZE === 0) {
-          await batch.commit();
-          batch = writeBatch(db);
-        }
+        if (writeCount % BATCH_SIZE === 0) { await batch.commit(); batch = writeBatch(db); }
       }
       if (writeCount % BATCH_SIZE !== 0) await batch.commit();
 
-      const studentsSnap = await getDocs(
-        query(collection(db, 'students'), where('isAbsent', '==', true)),
-      );
       batch = writeBatch(db);
       writeCount = 0;
       for (const studentDoc of studentsSnap.docs) {
         batch.update(studentDoc.ref, { isAbsent: false });
         writeCount++;
-        if (writeCount % BATCH_SIZE === 0) {
-          await batch.commit();
-          batch = writeBatch(db);
-        }
+        if (writeCount % BATCH_SIZE === 0) { await batch.commit(); batch = writeBatch(db); }
       }
       if (writeCount % BATCH_SIZE !== 0) await batch.commit();
 
@@ -90,6 +88,7 @@ export default function AdminDashboard() {
         archivedAt: now,
         totalPassesArchived: totalPasses,
         totalAbsentsCleared: studentsSnap.size,
+        teacherPassCounts,
         archivedBy: user.uid,
       });
 

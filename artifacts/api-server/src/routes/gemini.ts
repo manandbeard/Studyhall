@@ -1,26 +1,10 @@
 import { Router } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
-import { initializeApp, getApps, App } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { getAdminAuth } from "../lib/admin.js";
 
 const router = Router();
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "nhelland@nbend.k12.or.us";
-
-let adminApp: App;
-
-function getAdminApp(): App {
-  if (!adminApp) {
-    if (getApps().length === 0) {
-      adminApp = initializeApp({
-        projectId: "studentprojector",
-      });
-    } else {
-      adminApp = getApps()[0];
-    }
-  }
-  return adminApp;
-}
 
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
@@ -47,7 +31,7 @@ router.post("/gemini/parse-roster", async (req, res) => {
   let uid: string;
   let email: string | undefined;
   try {
-    const decoded = await getAuth(getAdminApp()).verifyIdToken(idToken);
+    const decoded = await getAdminAuth().verifyIdToken(idToken);
     uid = decoded.uid;
     email = decoded.email;
   } catch {

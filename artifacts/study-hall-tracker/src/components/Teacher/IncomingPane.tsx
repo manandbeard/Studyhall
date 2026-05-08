@@ -5,11 +5,10 @@ import {
   where,
   onSnapshot,
   doc,
-  getDocs,
   updateDoc,
   addDoc,
 } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { db, auth } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { AlertCircle, Users } from 'lucide-react';
@@ -107,52 +106,43 @@ export default function IncomingPane() {
   );
   const isAtCapacity = studyHallCapacity > 0 && activePasses.length >= studyHallCapacity;
 
-  const checkCollision = async (studentId: string): Promise<boolean> => {
-    const q = query(
-      collection(db, 'passes'),
-      where('studentId', '==', studentId),
-      where('status', 'in', ['pending', 'in_transit']),
-    );
-    const snap = await getDocs(q);
-    return !snap.empty;
-  };
-
   const createPass = async (
     studentId: string,
     studentName: string,
     originTeacherId: string,
   ): Promise<boolean> => {
-    const hasCollision = await checkCollision(studentId);
-    if (hasCollision) {
-      setSubmitError(
-        'This student already has an active pass. They cannot be requested again until their current pass is completed.',
-      );
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) {
+      setSubmitError('Authentication error. Please sign out and sign back in.');
       return false;
     }
 
-    const student = students.find((s: any) => s.id === studentId);
-    if (student?.isAbsent) {
-      setSubmitError(
-        `${studentName} has been marked absent today and cannot receive a pass.`,
-      );
-      return false;
-    }
-
-    await addDoc(collection(db, 'passes'), {
-      studentId,
-      studentName,
-      originTeacherId,
-      destinationTeacherId: user!.uid,
-      destinationRoom: user!.roomNumber,
-      status: 'pending',
-      requestedAt: new Date().toISOString(),
+    const response = await fetch('/api/passes/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        studentId,
+        studentName,
+        originTeacherId,
+        destinationTeacherId: user!.uid,
+        destinationRoom: user!.roomNumber ?? '',
+      }),
     });
 
-    setSelectedStudent('');
-    setStudentSearch('');
-    setSelectedOrigin('');
-    setSubmitError(null);
-    return true;
+    if (response.ok) {
+      setSelectedStudent('');
+      setStudentSearch('');
+      setSelectedOrigin('');
+      setSubmitError(null);
+      return true;
+    }
+
+    const body = await response.json().catch(() => ({}));
+    setSubmitError(body.error ?? 'Failed to create pass. Please try again.');
+    return false;
   };
 
   const handleRequest = async (e: React.FormEvent) => {
