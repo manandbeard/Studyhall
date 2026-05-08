@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/study-hall-mobile/"
+title = "Study Hall Mobile"
+version = "1.0.0"
+id = "artifacts/study-hall-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/study-hall-mobile/" ]
+localPort = 25879
+
+[services.development]
+run = "pnpm --filter @workspace/study-hall-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/study-hall-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/study-hall-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "25879"
+BASE_PATH = "/study-hall-mobile/"

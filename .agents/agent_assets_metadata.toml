@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "F4sogltDcBOd3rQdqPqR0"
+uri = "file://artifacts/study-hall-mobile/assets/images/icon.png"
+type = "image"
+title = "study hall tracker icon"
