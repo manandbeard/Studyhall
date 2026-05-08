@@ -44,12 +44,14 @@ router.post("/passes/create", async (req, res) => {
     studentId,
     studentName,
     originTeacherId,
+    originRoom,
     destinationTeacherId,
     destinationRoom,
   } = req.body as {
     studentId?: string;
     studentName?: string;
     originTeacherId?: string;
+    originRoom?: string;
     destinationTeacherId?: string;
     destinationRoom?: string;
   };
@@ -120,6 +122,7 @@ router.post("/passes/create", async (req, res) => {
         studentId,
         studentName,
         originTeacherId,
+        originRoom: originRoom ?? "",
         destinationTeacherId,
         destinationRoom: destinationRoom ?? "",
         status: "pending",

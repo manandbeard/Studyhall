@@ -95,8 +95,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [soundMuted, setSoundMuted] = useState(false);
   const playPing = useAudioPing(soundMuted);
 
+  interface InTransitPass {
+    id: string;
+    studentName: string;
+    departedAt: string | undefined;
+    originTeacherId: string;
+    destinationTeacherId: string;
+  }
+
   const overdueTriggered = useRef<Set<string>>(new Set());
-  const inTransitPassesRef = useRef<{ id: string; studentName: string; departedAt?: string; originTeacherId: string; destinationTeacherId: string }[]>([]);
+  const inTransitPassesRef = useRef<InTransitPass[]>([]);
   const pendingInitialized = useRef(false);
 
   const addToast = useCallback((message: string, type: ToastType) => {
@@ -141,8 +149,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       }
       for (const change of snapshot.docChanges()) {
         if (change.type === 'added') {
-          const pass = change.doc.data();
-          addToast(`New request: ${pass.studentName}`, 'info');
+          const data = change.doc.data();
+          const studentName = (data['studentName'] as string) ?? 'Unknown';
+          const originRoom = (data['originRoom'] as string) || '';
+          const roomLabel = originRoom ? ` from Room ${originRoom}` : '';
+          addToast(`New request: ${studentName}${roomLabel}`, 'info');
           playPing('request');
         }
       }
@@ -156,7 +167,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const q = query(collection(db, 'passes'), where('status', '==', 'in_transit'));
     const unsub = onSnapshot(q, (snapshot) => {
       inTransitPassesRef.current = snapshot.docs
-        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        .map((d): InTransitPass => {
+          const data = d.data();
+          return {
+            id: d.id,
+            studentName: (data['studentName'] as string) ?? '',
+            departedAt: data['departedAt'] as string | undefined,
+            originTeacherId: (data['originTeacherId'] as string) ?? '',
+            destinationTeacherId: (data['destinationTeacherId'] as string) ?? '',
+          };
+        })
         .filter(
           (p) =>
             p.originTeacherId === user.uid || p.destinationTeacherId === user.uid,

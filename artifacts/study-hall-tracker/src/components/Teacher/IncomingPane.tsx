@@ -17,6 +17,7 @@ interface NewStudentPending {
   name: string;
   originTeacherId: string;
   originTeacherName: string;
+  originRoom: string;
 }
 
 export default function IncomingPane() {
@@ -110,6 +111,7 @@ export default function IncomingPane() {
     studentId: string,
     studentName: string,
     originTeacherId: string,
+    originRoom: string,
   ): Promise<boolean> => {
     const idToken = await auth.currentUser?.getIdToken();
     if (!idToken) {
@@ -127,6 +129,7 @@ export default function IncomingPane() {
         studentId,
         studentName,
         originTeacherId,
+        originRoom,
         destinationTeacherId: user!.uid,
         destinationRoom: user!.roomNumber ?? '',
       }),
@@ -165,11 +168,17 @@ export default function IncomingPane() {
         if (exactMatch) {
           studentId = exactMatch.id;
           studentName = exactMatch.name;
+          if (exactMatch.isAbsent) {
+            setSubmitError(`${exactMatch.name} is absent today and cannot receive a pass.`);
+            setSubmitting(false);
+            return;
+          }
         } else {
           setPendingNewStudent({
             name: studentName,
             originTeacherId: originTeacher.id,
             originTeacherName: originTeacher.name,
+            originRoom: originTeacher.roomNumber ?? '',
           });
           setSubmitting(false);
           return;
@@ -186,7 +195,7 @@ export default function IncomingPane() {
         }
       }
 
-      await createPass(studentId, studentName, originTeacher.id);
+      await createPass(studentId, studentName, originTeacher.id, originTeacher.roomNumber ?? '');
     } catch (error) {
       console.error(error);
       setSubmitError('Failed to create pass. Please try again.');
@@ -209,6 +218,7 @@ export default function IncomingPane() {
         newStudentRef.id,
         pendingNewStudent.name,
         pendingNewStudent.originTeacherId,
+        pendingNewStudent.originRoom,
       );
       if (ok) setPendingNewStudent(null);
     } catch (error) {
