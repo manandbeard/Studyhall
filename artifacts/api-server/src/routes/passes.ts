@@ -177,6 +177,9 @@ router.post("/passes/:passId/complete", async (req, res) => {
         throw new AppError("FORBIDDEN", "You may only complete passes for your own room.", 403);
       }
 
+      const counterRef = db.collection("teacherActiveCount").doc(data.destinationTeacherId ?? uid);
+      const counterDoc = await tx.get(counterRef);
+
       const now = new Date().toISOString();
       tx.update(passRef, { status: "completed", completedAt: now });
 
@@ -185,9 +188,9 @@ router.post("/passes/:passId/complete", async (req, res) => {
         tx.delete(lockRef);
       }
 
-      if (data.destinationTeacherId) {
-        const counterRef = db.collection("teacherActiveCount").doc(data.destinationTeacherId);
-        tx.update(counterRef, { count: FieldValue.increment(-1) });
+      if (counterDoc.exists) {
+        const current: number = counterDoc.data()?.count ?? 0;
+        tx.set(counterRef, { count: Math.max(0, current - 1) }, { merge: true });
       }
     });
 
