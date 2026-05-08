@@ -65,23 +65,36 @@ export default function AdminDashboard() {
         }
       }
 
+      const [locksSnap, countersSnap] = await Promise.all([
+        getDocs(collection(db, 'activeStudentPasses')),
+        getDocs(collection(db, 'teacherActiveCount')),
+      ]);
+
       let batch = writeBatch(db);
       let writeCount = 0;
-      for (const passDoc of passesSnap.docs) {
-        batch.update(passDoc.ref, { status: 'completed', completedAt: now, archivedBy: 'daily_reset' });
-        writeCount++;
-        if (writeCount % BATCH_SIZE === 0) { await batch.commit(); batch = writeBatch(db); }
-      }
-      if (writeCount % BATCH_SIZE !== 0) await batch.commit();
 
-      batch = writeBatch(db);
-      writeCount = 0;
-      for (const studentDoc of studentsSnap.docs) {
-        batch.update(studentDoc.ref, { isAbsent: false });
+      const flushBatch = async () => {
+        if (writeCount > 0) { await batch.commit(); batch = writeBatch(db); writeCount = 0; }
+      };
+      const batchWrite = async (fn: (b: ReturnType<typeof writeBatch>) => void) => {
+        fn(batch);
         writeCount++;
-        if (writeCount % BATCH_SIZE === 0) { await batch.commit(); batch = writeBatch(db); }
+        if (writeCount >= BATCH_SIZE) await flushBatch();
+      };
+
+      for (const passDoc of passesSnap.docs) {
+        await batchWrite(b => b.update(passDoc.ref, { status: 'completed', completedAt: now, archivedBy: 'daily_reset' }));
       }
-      if (writeCount % BATCH_SIZE !== 0) await batch.commit();
+      for (const lockDoc of locksSnap.docs) {
+        await batchWrite(b => b.delete(lockDoc.ref));
+      }
+      for (const counterDoc of countersSnap.docs) {
+        await batchWrite(b => b.set(counterDoc.ref, { count: 0 }));
+      }
+      for (const studentDoc of studentsSnap.docs) {
+        await batchWrite(b => b.update(studentDoc.ref, { isAbsent: false }));
+      }
+      await flushBatch();
 
       await addDoc(collection(db, 'dailyArchives'), {
         date: new Date().toISOString().split('T')[0],

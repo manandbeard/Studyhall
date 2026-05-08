@@ -223,14 +223,20 @@ export default function IncomingPane() {
     }
   };
 
-  const handleComplete = async (passId: string) => {
+  const handleComplete = async (pass: any) => {
     try {
-      await updateDoc(doc(db, 'passes', passId), {
-        status: 'completed',
-        completedAt: new Date().toISOString(),
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) return;
+      const response = await fetch(`/api/passes/${pass.id}/complete`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
       });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        console.error('Complete pass failed:', body);
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `passes/${passId}`);
+      console.error('Failed to complete pass:', error);
     }
   };
 
@@ -422,7 +428,7 @@ export default function IncomingPane() {
                   )}
                   {pass.status === 'arrived' && (
                     <button
-                      onClick={() => handleComplete(pass.id)}
+                      onClick={() => handleComplete(pass)}
                       className="neo-button bg-neo-border text-white px-4 py-2"
                     >
                       Complete
