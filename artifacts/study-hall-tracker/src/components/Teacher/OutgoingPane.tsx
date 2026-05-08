@@ -1,19 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { differenceInMinutes } from 'date-fns';
-import { useNotifications } from '@/contexts/NotificationContext';
 
 export default function OutgoingPane() {
   const { user } = useAuth();
-  const { playPing } = useNotifications();
   const [passes, setPasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const arrivedSeenRef = useRef<Set<string>>(new Set());
-  const arrivedInitialized = useRef(false);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 30000);
@@ -43,33 +39,6 @@ export default function OutgoingPane() {
 
     return () => unsubscribe();
   }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-    arrivedInitialized.current = false;
-
-    const q = query(
-      collection(db, 'passes'),
-      where('originTeacherId', '==', user.uid),
-      where('status', '==', 'arrived'),
-    );
-
-    const unsub = onSnapshot(q, (snapshot) => {
-      if (!arrivedInitialized.current) {
-        arrivedInitialized.current = true;
-        snapshot.docs.forEach((d) => arrivedSeenRef.current.add(d.id));
-        return;
-      }
-      for (const change of snapshot.docChanges()) {
-        if (change.type === 'added' && !arrivedSeenRef.current.has(change.doc.id)) {
-          arrivedSeenRef.current.add(change.doc.id);
-          playPing('arrived');
-        }
-      }
-    });
-
-    return unsub;
-  }, [user?.uid, playPing]);
 
   const handleSend = async (passId: string) => {
     try {

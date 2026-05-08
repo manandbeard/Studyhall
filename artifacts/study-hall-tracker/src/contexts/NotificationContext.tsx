@@ -106,6 +106,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const overdueTriggered = useRef<Set<string>>(new Set());
   const inTransitPassesRef = useRef<InTransitPass[]>([]);
   const pendingInitialized = useRef(false);
+  const arrivedInitialized = useRef(false);
 
   const addToast = useCallback((message: string, type: ToastType) => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -161,6 +162,31 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     return unsub;
   }, [user?.uid, addToast, playPing]);
+
+  useEffect(() => {
+    if (!user) return;
+    arrivedInitialized.current = false;
+
+    const q = query(
+      collection(db, 'passes'),
+      where('originTeacherId', '==', user.uid),
+      where('status', '==', 'arrived'),
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      if (!arrivedInitialized.current) {
+        arrivedInitialized.current = true;
+        return;
+      }
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'added') {
+          playPing('arrived');
+        }
+      }
+    });
+
+    return unsub;
+  }, [user?.uid, playPing]);
 
   useEffect(() => {
     if (!user) return;
