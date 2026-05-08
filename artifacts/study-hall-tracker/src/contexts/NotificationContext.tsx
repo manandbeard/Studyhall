@@ -17,7 +17,7 @@ import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { differenceInMinutes } from 'date-fns';
 import { useAudioPing, PingType } from '@/hooks/useAudioPing';
-import { AlertCircle, Clock, X, Bell } from 'lucide-react';
+import { Clock, X, Bell } from 'lucide-react';
 
 export type ToastType = 'info' | 'overdue';
 

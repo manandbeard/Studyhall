@@ -70,7 +70,7 @@ export default function RosterList() {
             });
             if (passData.destinationTeacherId) {
               const counterRef = doc(db, 'teacherActiveCount', passData.destinationTeacherId);
-              batch.update(counterRef, { count: increment(-1) });
+              batch.set(counterRef, { count: increment(-1) }, { merge: true });
             }
           }
 
