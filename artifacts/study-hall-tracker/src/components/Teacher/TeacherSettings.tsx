@@ -1,9 +1,17 @@
 import { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import {
+  doc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
-import { Save, User, Phone, MapPin, Bell, Power } from 'lucide-react';
+import { Save, User, Phone, MapPin, Bell, Power, Users, RefreshCw } from 'lucide-react';
 
 export default function TeacherSettings() {
   const { user } = useAuth();
@@ -12,9 +20,12 @@ export default function TeacherSettings() {
     roomNumber: user?.roomNumber || '',
     phoneNumber: user?.phoneNumber || '',
     isAway: user?.isAway || false,
+    studyHallCapacity: user?.studyHallCapacity ?? 0,
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [clearingAbsent, setClearingAbsent] = useState(false);
+  const [clearAbsentSuccess, setClearAbsentSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +39,7 @@ export default function TeacherSettings() {
         roomNumber: formData.roomNumber,
         phoneNumber: formData.phoneNumber,
         isAway: formData.isAway,
+        studyHallCapacity: formData.studyHallCapacity,
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -35,6 +47,36 @@ export default function TeacherSettings() {
       handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleClearAbsentFlags = async () => {
+    if (!user) return;
+    setClearingAbsent(true);
+    setClearAbsentSuccess(false);
+    try {
+      const q = query(
+        collection(db, 'students'),
+        where('thirdPeriodTeacherId', '==', user.uid),
+        where('isAbsent', '==', true),
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        setClearAbsentSuccess(true);
+        setTimeout(() => setClearAbsentSuccess(false), 3000);
+        return;
+      }
+      const batch = writeBatch(db);
+      for (const d of snap.docs) {
+        batch.update(d.ref, { isAbsent: false });
+      }
+      await batch.commit();
+      setClearAbsentSuccess(true);
+      setTimeout(() => setClearAbsentSuccess(false), 3000);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'students/absent-reset');
+    } finally {
+      setClearingAbsent(false);
     }
   };
 
@@ -60,7 +102,7 @@ export default function TeacherSettings() {
                 type="text"
                 className="neo-input w-full"
                 value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
             </div>
@@ -73,7 +115,7 @@ export default function TeacherSettings() {
                 type="text"
                 className="neo-input w-full"
                 value={formData.roomNumber}
-                onChange={(e) => setFormData({...formData, roomNumber: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
                 required
               />
             </div>
@@ -87,8 +129,30 @@ export default function TeacherSettings() {
                 className="neo-input w-full"
                 placeholder="(555) 000-0000"
                 value={formData.phoneNumber}
-                onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-sm uppercase flex items-center gap-2">
+                <Users className="w-4 h-4" /> Study Hall Capacity
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="99"
+                className="neo-input w-full"
+                value={formData.studyHallCapacity}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    studyHallCapacity: Math.max(0, parseInt(e.target.value) || 0),
+                  })
+                }
+              />
+              <p className="text-xs font-bold text-gray-500">
+                Max students allowed at once. Set to 0 for unlimited.
+              </p>
             </div>
           </div>
 
@@ -108,7 +172,7 @@ export default function TeacherSettings() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setFormData({...formData, isAway: !formData.isAway})}
+                  onClick={() => setFormData({ ...formData, isAway: !formData.isAway })}
                   className={`neo-button px-4 py-1 text-xs font-black uppercase ${formData.isAway ? 'bg-neo-red text-white' : 'bg-gray-200'}`}
                 >
                   {formData.isAway ? 'Away' : 'Active'}
@@ -122,16 +186,39 @@ export default function TeacherSettings() {
                   </div>
                   <div>
                     <p className="font-black text-sm uppercase">Sound Alerts</p>
-                    <p className="text-xs font-bold text-gray-500">Play sound on new requests (Pro feature)</p>
+                    <p className="text-xs font-bold text-gray-500">Coming in Phase 2</p>
                   </div>
                 </div>
                 <div className="w-12 h-6 bg-gray-300 rounded-full border-2 border-neo-border"></div>
               </div>
             </div>
 
+            <div className="neo-box p-4 bg-gray-50 space-y-3">
+              <h4 className="font-black uppercase text-sm">Daily Reset</h4>
+              <p className="text-xs font-bold text-gray-600">
+                Clear all absent flags for your roster. Use at the start of each school day.
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleClearAbsentFlags}
+                  disabled={clearingAbsent}
+                  className="neo-button bg-neo-yellow px-4 py-2 text-sm font-black uppercase flex items-center gap-2 disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-4 h-4 ${clearingAbsent ? 'animate-spin' : ''}`} />
+                  {clearingAbsent ? 'Clearing...' : 'Clear My Absent Flags'}
+                </button>
+                {clearAbsentSuccess && (
+                  <span className="text-neo-green font-black text-sm uppercase animate-bounce">
+                    Done!
+                  </span>
+                )}
+              </div>
+            </div>
+
             <div className="p-4 bg-neo-yellow/10 border-2 border-dashed border-neo-yellow rounded-lg">
               <p className="text-xs font-bold text-neo-yellow-dark">
-                Tip: Marking yourself as "Away" will hide you from the student selection list for other teachers.
+                Tip: Marking yourself as "Away" hides you from the student selection list for other teachers.
               </p>
             </div>
           </div>

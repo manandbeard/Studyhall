@@ -39,6 +39,7 @@ export interface AppUser {
   roomNumber?: string;
   phoneNumber?: string;
   isAway?: boolean;
+  studyHallCapacity?: number;
 }
 
 interface AuthContextType {
