@@ -427,18 +427,18 @@ export default function IncomingPane() {
                   : 'bg-white'
               }`}
             >
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                 <div>
                   <p className="font-black text-lg">{pass.studentName}</p>
                   <p className="font-bold text-sm">
                     Status: {pass.status.replace('_', ' ').toUpperCase()}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   {pass.status === 'in_transit' && (
                     <button
                       onClick={() => handleReceive(pass.id)}
-                      className="neo-button bg-neo-green text-neo-border px-4 py-2"
+                      className="neo-button bg-neo-green text-neo-border px-4 py-3 w-full sm:w-auto min-h-[48px] font-black"
                     >
                       Received
                     </button>
@@ -446,7 +446,7 @@ export default function IncomingPane() {
                   {pass.status === 'arrived' && (
                     <button
                       onClick={() => handleComplete(pass)}
-                      className="neo-button bg-neo-border text-white px-4 py-2"
+                      className="neo-button bg-neo-border text-white px-4 py-3 w-full sm:w-auto min-h-[48px] font-black"
                     >
                       Complete
                     </button>

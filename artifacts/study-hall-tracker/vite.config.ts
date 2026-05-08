@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { VitePWA } from "vite-plugin-pwa";
 
 const rawPort = process.env.PORT ?? "5173";
 const port = Number(rawPort);
@@ -14,6 +15,39 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: "auto",
+      strategies: "generateSW",
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        navigateFallback: "index.html",
+        navigateFallbackDenylist: [/^\/api\//],
+      },
+      manifest: {
+        name: "Study Hall Tracker",
+        short_name: "StudyHall",
+        description: "Real-time hall pass tracking for North Bend schools",
+        theme_color: "#FFD500",
+        background_color: "#FFD500",
+        display: "standalone",
+        start_url: ".",
+        icons: [
+          {
+            src: "icons/icon-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+          {
+            src: "icons/icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+        ],
+      },
+    }),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [

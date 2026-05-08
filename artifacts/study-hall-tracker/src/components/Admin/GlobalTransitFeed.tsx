@@ -50,7 +50,7 @@ export default function GlobalTransitFeed() {
         </div>
       </div>
 
-      <div className="p-4 flex-1 overflow-y-auto space-y-4">
+      <div className="p-3 sm:p-4 flex-1 overflow-y-auto space-y-3">
         {passes.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <p className="font-bold text-gray-500 text-xl">Halls are clear.</p>
@@ -61,17 +61,17 @@ export default function GlobalTransitFeed() {
             return (
               <div
                 key={pass.id}
-                className={`border-4 border-neo-border p-4 flex justify-between items-center ${overdue ? 'bg-neo-red text-white shadow-[6px_6px_0px_0px_rgba(17,17,17,1)] animate-bounce' : 'bg-neo-yellow'}`}
+                className={`border-4 border-neo-border p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 ${overdue ? 'bg-neo-red text-white shadow-[6px_6px_0px_0px_rgba(17,17,17,1)] animate-bounce' : 'bg-neo-yellow'}`}
               >
-                <div>
-                  <p className="font-black text-2xl">{pass.studentName}</p>
-                  <p className="font-bold">Destination: Room {pass.destinationRoom}</p>
+                <div className="min-w-0">
+                  <p className="font-black text-xl sm:text-2xl truncate">{pass.studentName}</p>
+                  <p className="font-bold text-sm">Destination: Room {pass.destinationRoom}</p>
                   <p className="font-medium text-sm mt-1">
                     Departed: {new Date(pass.departedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                   </p>
                 </div>
                 {overdue && (
-                  <div className="bg-white text-neo-red font-black px-4 py-2 border-4 border-neo-border rotate-3">
+                  <div className="bg-white text-neo-red font-black px-4 py-2 border-4 border-neo-border self-start sm:self-auto sm:rotate-3 shrink-0 text-sm sm:text-base">
                     OVERDUE
                   </div>
                 )}

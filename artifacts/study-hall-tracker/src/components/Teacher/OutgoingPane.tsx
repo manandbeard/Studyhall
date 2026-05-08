@@ -80,7 +80,7 @@ export default function OutgoingPane() {
                     : 'bg-neo-blue text-white'
                 }`}
               >
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                   <div>
                     <p className="font-black text-lg">{pass.studentName}</p>
                     <p className="font-bold text-sm">To: Room {pass.destinationRoom}</p>
@@ -88,7 +88,7 @@ export default function OutgoingPane() {
                   {pass.status === 'pending' ? (
                     <button
                       onClick={() => handleSend(pass.id)}
-                      className="neo-button bg-neo-green text-neo-border px-4 py-2"
+                      className="neo-button bg-neo-green text-neo-border px-4 py-3 w-full sm:w-auto min-h-[48px]"
                     >
                       Send
                     </button>
