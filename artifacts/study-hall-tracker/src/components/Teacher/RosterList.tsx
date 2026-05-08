@@ -147,7 +147,7 @@ export default function RosterList() {
                   >
                     {student.name}
                   </span>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 shrink-0">
                     <button
                       onClick={() => {
                         if (editingNotesId === student.id) {
@@ -157,14 +157,14 @@ export default function RosterList() {
                           setNotesValue(student.notes || '');
                         }
                       }}
-                      className="p-1 border-2 border-neo-border bg-neo-yellow text-neo-border transition-colors"
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center border-2 border-neo-border bg-neo-yellow text-neo-border transition-colors"
                       title="Edit Notes"
                     >
                       <Edit3 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => toggleAbsent(student)}
-                      className={`p-1 border-2 border-neo-border transition-colors ${
+                      className={`min-w-[44px] min-h-[44px] flex items-center justify-center border-2 border-neo-border transition-colors ${
                         student.isAbsent
                           ? 'bg-neo-red text-white'
                           : 'bg-neo-green text-neo-border'

@@ -45,25 +45,25 @@ export default function TeacherDashboard() {
         </button>
       </header>
 
-      <nav className="bg-white border-b-4 border-neo-border overflow-x-auto sticky top-[57px] sm:top-[69px] z-10 scrollbar-none">
+      <nav className="bg-white border-b-4 border-neo-border overflow-x-auto sticky top-[57px] sm:top-[69px] z-10 snap-x snap-mandatory scrollbar-none">
         <div className="flex min-w-max">
           <button
             onClick={() => setActiveTab('dashboard')}
-            className={`px-4 sm:px-6 py-3 font-black text-sm uppercase flex items-center gap-2 border-r-4 border-neo-border min-h-[48px] transition-colors ${activeTab === 'dashboard' ? 'bg-neo-yellow' : 'bg-white hover:bg-gray-50'}`}
+            className={`snap-start px-4 sm:px-6 py-3 font-black text-sm uppercase flex items-center gap-2 border-r-4 border-neo-border min-h-[48px] transition-colors ${activeTab === 'dashboard' ? 'bg-neo-yellow' : 'bg-white hover:bg-gray-50'}`}
           >
             <LayoutDashboard className="w-4 h-4 shrink-0" />
             Dashboard
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
-            className={`px-4 sm:px-6 py-3 font-black text-sm uppercase flex items-center gap-2 border-r-4 border-neo-border min-h-[48px] transition-colors ${activeTab === 'analytics' ? 'bg-neo-yellow' : 'bg-white hover:bg-gray-50'}`}
+            className={`snap-start px-4 sm:px-6 py-3 font-black text-sm uppercase flex items-center gap-2 border-r-4 border-neo-border min-h-[48px] transition-colors ${activeTab === 'analytics' ? 'bg-neo-yellow' : 'bg-white hover:bg-gray-50'}`}
           >
             <BarChart2 className="w-4 h-4 shrink-0" />
             Analytics
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`px-4 sm:px-6 py-3 font-black text-sm uppercase flex items-center gap-2 border-r-4 border-neo-border min-h-[48px] transition-colors ${activeTab === 'settings' ? 'bg-neo-yellow' : 'bg-white hover:bg-gray-50'}`}
+            className={`snap-start px-4 sm:px-6 py-3 font-black text-sm uppercase flex items-center gap-2 border-r-4 border-neo-border min-h-[48px] transition-colors ${activeTab === 'settings' ? 'bg-neo-yellow' : 'bg-white hover:bg-gray-50'}`}
           >
             <Settings className="w-4 h-4 shrink-0" />
             Settings
@@ -71,7 +71,7 @@ export default function TeacherDashboard() {
           {user.role === 'admin' && (
             <Link
               href="/admin"
-              className="px-4 sm:px-6 py-3 font-black text-sm uppercase flex items-center gap-2 bg-neo-blue text-white min-h-[48px]"
+              className="snap-start px-4 sm:px-6 py-3 font-black text-sm uppercase flex items-center gap-2 bg-neo-blue text-white min-h-[48px]"
             >
               <ShieldCheck className="w-4 h-4 shrink-0" />
               Admin
