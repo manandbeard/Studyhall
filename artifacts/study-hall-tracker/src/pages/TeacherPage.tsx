@@ -7,12 +7,15 @@ import RosterImport from '@/components/Teacher/RosterImport';
 import TeacherSettings from '@/components/Teacher/TeacherSettings';
 import AttendanceSummary from '@/components/Teacher/AttendanceSummary';
 import RosterList from '@/components/Teacher/RosterList';
-import { Settings, LayoutDashboard, LogOut } from 'lucide-react';
+import TeacherAnalyticsPanel from '@/components/Teacher/TeacherAnalyticsPanel';
+import { Settings, LayoutDashboard, BarChart2, LogOut } from 'lucide-react';
+
+type Tab = 'dashboard' | 'analytics' | 'settings';
 
 export default function TeacherDashboard() {
   const { user, loading, signOut } = useAuth();
   const [, setLocation] = useLocation();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
 
   useEffect(() => {
     if (!loading && (!user || (user.role !== 'teacher' && user.role !== 'admin'))) {
@@ -36,16 +39,27 @@ export default function TeacherDashboard() {
             </span>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           <button
-            onClick={() => setActiveTab(activeTab === 'dashboard' ? 'settings' : 'dashboard')}
+            onClick={() => setActiveTab('dashboard')}
+            className={`neo-button px-4 py-2 text-sm flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-neo-yellow' : 'bg-gray-100'}`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`neo-button px-4 py-2 text-sm flex items-center gap-2 ${activeTab === 'analytics' ? 'bg-neo-yellow' : 'bg-gray-100'}`}
+          >
+            <BarChart2 className="w-4 h-4" />
+            Analytics
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
             className={`neo-button px-4 py-2 text-sm flex items-center gap-2 ${activeTab === 'settings' ? 'bg-neo-yellow' : 'bg-gray-100'}`}
           >
-            {activeTab === 'dashboard' ? (
-              <><Settings className="w-4 h-4" /> Settings</>
-            ) : (
-              <><LayoutDashboard className="w-4 h-4" /> Dashboard</>
-            )}
+            <Settings className="w-4 h-4" />
+            Settings
           </button>
           {user.role === 'admin' && (
             <Link href="/admin" className="neo-button bg-neo-blue text-white px-4 py-2 text-sm flex items-center">
@@ -59,7 +73,7 @@ export default function TeacherDashboard() {
       </header>
 
       <main className="flex-1 p-4 flex flex-col gap-4 max-w-7xl mx-auto w-full">
-        {activeTab === 'dashboard' ? (
+        {activeTab === 'dashboard' && (
           <>
             <AttendanceSummary />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -73,9 +87,9 @@ export default function TeacherDashboard() {
               </div>
             </div>
           </>
-        ) : (
-          <TeacherSettings />
         )}
+        {activeTab === 'analytics' && <TeacherAnalyticsPanel />}
+        {activeTab === 'settings' && <TeacherSettings />}
       </main>
     </div>
   );
