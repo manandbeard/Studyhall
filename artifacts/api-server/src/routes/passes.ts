@@ -27,6 +27,15 @@ async function verifyToken(authHeader: string | undefined): Promise<string> {
   }
 }
 
+async function verifyAdmin(authHeader: string | undefined): Promise<string> {
+  const uid = await verifyToken(authHeader);
+  const userDoc = await getAdminDb().collection("users").doc(uid).get();
+  if (!userDoc.exists || userDoc.data()?.role !== "admin") {
+    throw new AppError("FORBIDDEN", "Admin privileges are required.", 403);
+  }
+  return uid;
+}
+
 router.post("/passes/create", async (req, res) => {
   let uid: string;
   try {
@@ -213,6 +222,112 @@ router.post("/passes/:passId/complete", async (req, res) => {
       logger.error({ err }, "Pass complete transaction error");
       res.status(500).json({ error: message });
     }
+  }
+});
+
+router.post("/admin/archive-day", async (req, res) => {
+  let uid: string;
+  try {
+    uid = await verifyAdmin(req.headers.authorization);
+  } catch (err) {
+    if (err instanceof AppError) {
+      res.status(err.status).json({ code: err.code, error: err.message });
+    } else {
+      res.status(500).json({ error: "Unexpected auth error." });
+    }
+    return;
+  }
+
+  const db = getAdminDb();
+  const BATCH_SIZE = 450;
+
+  try {
+    const activeStatuses = ["pending", "in_transit", "arrived"];
+    const [passesSnap, studentsSnap, locksSnap, countersSnap] = await Promise.all([
+      db.collection("passes").where("status", "in", activeStatuses).get(),
+      db.collection("students").where("isAbsent", "==", true).get(),
+      db.collection("activeStudentPasses").get(),
+      db.collection("teacherActiveCount").get(),
+    ]);
+
+    const now = new Date().toISOString();
+    const date = now.split("T")[0];
+    const totalPasses = passesSnap.size;
+    const totalAbsentsCleared = studentsSnap.size;
+
+    const teacherPassCounts: Record<string, number> = {};
+    for (const passDoc of passesSnap.docs) {
+      const data = passDoc.data();
+      if (data.originTeacherId) {
+        teacherPassCounts[data.originTeacherId] = (teacherPassCounts[data.originTeacherId] ?? 0) + 1;
+      }
+      if (data.destinationTeacherId && data.destinationTeacherId !== data.originTeacherId) {
+        teacherPassCounts[data.destinationTeacherId] =
+          (teacherPassCounts[data.destinationTeacherId] ?? 0) + 1;
+      }
+    }
+
+    let batch = db.batch();
+    let writeCount = 0;
+
+    const flushBatch = async () => {
+      if (writeCount === 0) return;
+      await batch.commit();
+      batch = db.batch();
+      writeCount = 0;
+    };
+
+    const enqueue = async (fn: (b: FirebaseFirestore.WriteBatch) => void) => {
+      fn(batch);
+      writeCount += 1;
+      if (writeCount >= BATCH_SIZE) {
+        await flushBatch();
+      }
+    };
+
+    for (const passDoc of passesSnap.docs) {
+      await enqueue((b) =>
+        b.update(passDoc.ref, {
+          status: "completed",
+          completedAt: now,
+          archivedBy: "daily_reset",
+        }),
+      );
+    }
+
+    for (const lockDoc of locksSnap.docs) {
+      await enqueue((b) => b.delete(lockDoc.ref));
+    }
+
+    for (const counterDoc of countersSnap.docs) {
+      await enqueue((b) => b.set(counterDoc.ref, { count: 0 }, { merge: true }));
+    }
+
+    for (const studentDoc of studentsSnap.docs) {
+      await enqueue((b) => b.update(studentDoc.ref, { isAbsent: false }));
+    }
+
+    await flushBatch();
+
+    await db.collection("dailyArchives").add({
+      date,
+      archivedAt: now,
+      totalPassesArchived: totalPasses,
+      totalAbsentsCleared,
+      teacherPassCounts,
+      archivedBy: uid,
+    });
+
+    res.status(200).json({
+      ok: true,
+      totalPassesArchived: totalPasses,
+      totalAbsentsCleared,
+      teacherPassCounts,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to archive day.";
+    logger.error({ err }, "Archive day/reset error");
+    res.status(500).json({ error: message });
   }
 });
 
