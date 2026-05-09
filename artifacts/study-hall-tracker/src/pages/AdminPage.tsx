@@ -1,24 +1,19 @@
 import { useAuth } from '@/components/AuthProvider';
 import { useLocation, Link } from 'wouter';
 import { useEffect, useState } from 'react';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  writeBatch,
-} from 'firebase/firestore';
-import { db } from '@/firebase';
+import { auth } from '@/firebase';
 import GlobalTransitFeed from '@/components/Admin/GlobalTransitFeed';
 import TeacherManagement from '@/components/Admin/TeacherManagement';
 import StatisticsDashboard from '@/components/Admin/StatisticsDashboard';
 import PassAuditLog from '@/components/Admin/PassAuditLog';
 import SchoolWideImport from '@/components/Admin/SchoolWideImport';
 import { Archive, AlertTriangle } from 'lucide-react';
-import { FIRESTORE_BATCH_LIMIT } from '@/lib/constants';
 
-const BATCH_SIZE = FIRESTORE_BATCH_LIMIT;
+const toObjectOrEmpty = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object' ? value as Record<string, unknown> : {};
+
+const toCountOrZero = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -27,6 +22,7 @@ export default function AdminDashboard() {
   const [archiveConfirm, setArchiveConfirm] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [archiveResult, setArchiveResult] = useState<string | null>(null);
+  const [archiveResultTone, setArchiveResultTone] = useState<'success' | 'error'>('success');
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {
@@ -35,6 +31,10 @@ export default function AdminDashboard() {
   }, [user, loading, setLocation]);
 
   if (loading || !user) return null;
+  const archiveResultClasses =
+    archiveResultTone === 'success'
+      ? 'bg-neo-green text-neo-border'
+      : 'bg-neo-red text-white';
 
   const handleArchiveDay = async () => {
     if (!archiveConfirm) {
@@ -45,74 +45,45 @@ export default function AdminDashboard() {
     setArchiving(true);
     setArchiveConfirm(false);
     setArchiveResult(null);
+    setArchiveResultTone('success');
 
     try {
-      const activePassStatuses = ['pending', 'in_transit', 'arrived'];
-      const [passesSnap, studentsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'passes'), where('status', 'in', activePassStatuses))),
-        getDocs(query(collection(db, 'students'), where('isAbsent', '==', true))),
-      ]);
-      const totalPasses = passesSnap.size;
-      const now = new Date().toISOString();
-
-      const teacherPassCounts: Record<string, number> = {};
-      for (const passDoc of passesSnap.docs) {
-        const data = passDoc.data();
-        if (data.originTeacherId) {
-          teacherPassCounts[data.originTeacherId] = (teacherPassCounts[data.originTeacherId] ?? 0) + 1;
-        }
-        if (data.destinationTeacherId && data.destinationTeacherId !== data.originTeacherId) {
-          teacherPassCounts[data.destinationTeacherId] = (teacherPassCounts[data.destinationTeacherId] ?? 0) + 1;
-        }
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error('Authentication expired. Please sign out and sign back in.');
       }
 
-      const [locksSnap, countersSnap] = await Promise.all([
-        getDocs(collection(db, 'activeStudentPasses')),
-        getDocs(collection(db, 'teacherActiveCount')),
-      ]);
-
-      let batch = writeBatch(db);
-      let writeCount = 0;
-
-      const flushBatch = async () => {
-        if (writeCount > 0) { await batch.commit(); batch = writeBatch(db); writeCount = 0; }
-      };
-      const batchWrite = async (fn: (b: ReturnType<typeof writeBatch>) => void) => {
-        fn(batch);
-        writeCount++;
-        if (writeCount >= BATCH_SIZE) await flushBatch();
-      };
-
-      for (const passDoc of passesSnap.docs) {
-        await batchWrite(b => b.update(passDoc.ref, { status: 'completed', completedAt: now, archivedBy: 'daily_reset' }));
-      }
-      for (const lockDoc of locksSnap.docs) {
-        await batchWrite(b => b.delete(lockDoc.ref));
-      }
-      for (const counterDoc of countersSnap.docs) {
-        await batchWrite(b => b.set(counterDoc.ref, { count: 0 }));
-      }
-      for (const studentDoc of studentsSnap.docs) {
-        await batchWrite(b => b.update(studentDoc.ref, { isAbsent: false }));
-      }
-      await flushBatch();
-
-      await addDoc(collection(db, 'dailyArchives'), {
-        date: new Date().toISOString().split('T')[0],
-        archivedAt: now,
-        totalPassesArchived: totalPasses,
-        totalAbsentsCleared: studentsSnap.size,
-        teacherPassCounts,
-        archivedBy: user.uid,
+      const response = await fetch('/api/admin/archive-day', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
       });
 
+      const body = toObjectOrEmpty(await response.json().catch(() => ({})));
+      if (!response.ok) {
+        const fallback =
+          response.status === 401
+            ? 'Session expired. Please sign in again.'
+            : response.status === 403
+              ? 'Admin permission required for archive/reset.'
+              : 'Archive failed. Please try again.';
+        throw new Error(typeof body.error === 'string' ? body.error : fallback);
+      }
+
+      const totalPasses = toCountOrZero(body.totalPassesArchived);
+      const totalAbsents = toCountOrZero(body.totalAbsentsCleared);
+
+      setArchiveResultTone('success');
       setArchiveResult(
-        `Day archived: ${totalPasses} pass${totalPasses !== 1 ? 'es' : ''} completed, ${studentsSnap.size} absent flag${studentsSnap.size !== 1 ? 's' : ''} cleared.`,
+        `Day archived: ${totalPasses} pass${totalPasses !== 1 ? 'es' : ''} completed, ${totalAbsents} absent flag${totalAbsents !== 1 ? 's' : ''} cleared.`,
       );
       setTimeout(() => setArchiveResult(null), 8000);
     } catch (error) {
       console.error('Archive failed:', error);
-      setArchiveResult('Archive failed. Please try again.');
+      const message = error instanceof Error ? error.message : 'Archive failed. Please try again.';
+      setArchiveResultTone('error');
+      setArchiveResult(message);
     } finally {
       setArchiving(false);
     }
@@ -128,7 +99,7 @@ export default function AdminDashboard() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {archiveResult && (
-            <span className="bg-neo-green text-neo-border border-2 border-neo-border px-3 py-1 font-black text-xs uppercase">
+            <span className={`${archiveResultClasses} border-2 border-neo-border px-3 py-1 font-black text-xs uppercase`}>
               {archiveResult}
             </span>
           )}
