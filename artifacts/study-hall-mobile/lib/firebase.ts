@@ -3,8 +3,8 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   Auth,
   getAuth,
-  getReactNativePersistence,
   initializeAuth,
+  type Persistence,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { Platform } from "react-native";
@@ -27,14 +27,33 @@ const FIRESTORE_DATABASE_ID =
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
+type ReactNativePersistenceFactory = (storage: typeof AsyncStorage) => Persistence;
+const getReactNativePersistence = (() => {
+  try {
+    return (
+      require("firebase/auth/react-native") as {
+        getReactNativePersistence: ReactNativePersistenceFactory;
+      }
+    ).getReactNativePersistence;
+  } catch {
+    return (
+      require("firebase/auth") as {
+        getReactNativePersistence?: ReactNativePersistenceFactory;
+      }
+    ).getReactNativePersistence;
+  }
+})();
+
 let _auth: Auth;
 if (Platform.OS === "web") {
   _auth = getAuth(app);
 } else {
   try {
-    _auth = initializeAuth(app, {
-      persistence: getReactNativePersistence(AsyncStorage),
-    });
+    _auth = getReactNativePersistence
+      ? initializeAuth(app, {
+          persistence: getReactNativePersistence(AsyncStorage),
+        })
+      : getAuth(app);
   } catch {
     _auth = getAuth(app);
   }
