@@ -3,20 +3,21 @@ import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/f
 import { db } from '@/firebase';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { Edit2, Save, X } from 'lucide-react';
+import type { Teacher } from '@/lib/types';
 
 export default function TeacherManagement() {
-  const [teachers, setTeachers] = useState<any[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: '', roomNumber: '', email: '' });
 
   useEffect(() => {
     const q = query(collection(db, 'users'), where('role', '==', 'teacher'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const teacherData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const teacherData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Teacher));
       teacherData.sort((a: any, b: any) => a.name.localeCompare(b.name));
       setTeachers(teacherData);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users');
+      handleFirestoreError(error, OperationType.LIST, 'users', false);
     });
 
     return () => unsubscribe();

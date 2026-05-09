@@ -7,17 +7,18 @@ import {
   doc,
   updateDoc,
   getDocs,
+  getDoc,
   writeBatch,
-  increment,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
+import type { Student } from '@/lib/types';
 import { UserX, UserCheck, Search, Edit3 } from 'lucide-react';
 
 export default function RosterList() {
   const { user } = useAuth();
-  const [students, setStudents] = useState<any[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
@@ -31,13 +32,13 @@ export default function RosterList() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const studentData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const studentData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Student));
         studentData.sort((a: any, b: any) => a.name.localeCompare(b.name));
         setStudents(studentData);
         setLoading(false);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'students');
+        handleFirestoreError(error, OperationType.LIST, 'students', false);
       },
     );
 
@@ -50,15 +51,43 @@ export default function RosterList() {
       await updateDoc(doc(db, 'students', student.id), { isAbsent: newAbsent });
 
       if (newAbsent) {
+        // Cancel both pending and in_transit passes to clean up locks/counters.
         const pendingQ = query(
           collection(db, 'passes'),
           where('studentId', '==', student.id),
-          where('status', '==', 'pending'),
+          where('status', 'in', ['pending', 'in_transit']),
         );
         const pendingSnap = await getDocs(pendingQ);
 
         if (!pendingSnap.empty) {
           const now = new Date().toISOString();
+
+          // Read all counter docs before the batch so we can compute a safe floor-guarded decrement.
+          const counterIds = [
+            ...new Set(
+              pendingSnap.docs
+                .map((d) => d.data().destinationTeacherId as string | undefined)
+                .filter((id): id is string => !!id),
+            ),
+          ];
+          // Read counter docs directly by ID (more efficient than a filtered query).
+          const counterValues: Record<string, number> = {};
+          await Promise.all(
+            counterIds.map(async (id) => {
+              const snap = await getDoc(doc(db, 'teacherActiveCount', id));
+              counterValues[id] = (snap.data()?.count as number) ?? 0;
+            }),
+          );
+
+          // Count how many passes we are cancelling per destination teacher.
+          const decrements: Record<string, number> = {};
+          for (const passDoc of pendingSnap.docs) {
+            const destId = passDoc.data().destinationTeacherId as string | undefined;
+            if (destId) {
+              decrements[destId] = (decrements[destId] ?? 0) + 1;
+            }
+          }
+
           const batch = writeBatch(db);
 
           for (const passDoc of pendingSnap.docs) {
@@ -68,10 +97,14 @@ export default function RosterList() {
               cancelledAt: now,
               cancelledReason: 'student_absent',
             });
-            if (passData.destinationTeacherId) {
-              const counterRef = doc(db, 'teacherActiveCount', passData.destinationTeacherId);
-              batch.set(counterRef, { count: increment(-1) }, { merge: true });
-            }
+          }
+
+          // Write the counter decrements once per affected teacher (not once per pass)
+          // to avoid redundant batch operations writing the same value multiple times.
+          for (const [destId, decrement] of Object.entries(decrements)) {
+            const counterRef = doc(db, 'teacherActiveCount', destId);
+            const current = counterValues[destId] ?? 0;
+            batch.set(counterRef, { count: Math.max(0, current - decrement) }, { merge: true });
           }
 
           const lockRef = doc(db, 'activeStudentPasses', student.id);
@@ -80,7 +113,7 @@ export default function RosterList() {
           await batch.commit();
 
           const count = pendingSnap.size;
-          const notice = `${student.name} marked absent — ${count} pending pass${count > 1 ? 'es' : ''} cancelled.`;
+          const notice = `${student.name} marked absent — ${count} active pass${count > 1 ? 'es' : ''} cancelled.`;
           setCancelNotice(notice);
           setTimeout(() => setCancelNotice(null), 6000);
         }

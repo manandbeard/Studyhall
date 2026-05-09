@@ -28,7 +28,17 @@ export interface FirestoreErrorInfo {
   }
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null,
+  /**
+   * When false the error is logged but not re-thrown. Pass `false` when using
+   * this function as an `onSnapshot` error callback — throwing from those
+   * callbacks has no effect and silently stops the listener.
+   */
+  shouldRethrow = true,
+) {
   const errorMessage = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
     error: errorMessage,
@@ -49,5 +59,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   }
   console.error('Firestore Error: ', errInfo);
-  throw new Error(`Firestore ${operationType} error on '${path ?? 'unknown'}': ${errorMessage}`);
+  if (shouldRethrow) {
+    throw new Error(`Firestore ${operationType} error on '${path ?? 'unknown'}': ${errorMessage}`);
+  }
 }

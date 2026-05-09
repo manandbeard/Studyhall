@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   doc,
   updateDoc,
@@ -25,6 +25,21 @@ export default function TeacherSettings() {
     studyHallCapacity: user?.studyHallCapacity ?? 0,
     soundMuted: user?.soundMuted ?? false,
   });
+
+  // Sync form fields when the user doc changes externally (e.g. from another device).
+  // `saving` is intentionally excluded from deps: we only want to sync when the
+  // server pushes a change, not when a local save is in flight.
+  useEffect(() => {
+    if (!user || saving) return;
+    setFormData({
+      name: user.name || '',
+      roomNumber: user.roomNumber || '',
+      phoneNumber: user.phoneNumber || '',
+      isAway: user.isAway || false,
+      studyHallCapacity: user.studyHallCapacity ?? 0,
+      soundMuted: user.soundMuted ?? false,
+    });
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [clearingAbsent, setClearingAbsent] = useState(false);

@@ -1,7 +1,16 @@
 import { useState } from 'react';
-import { collection, getDocs, query, where, setDoc, doc, writeBatch } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  setDoc,
+  doc,
+  writeBatch,
+} from 'firebase/firestore';
 import { db, auth } from '@/firebase';
 import { Upload, AlertCircle, CheckCircle2, FileText, Sparkles } from 'lucide-react';
+import { FIRESTORE_BATCH_LIMIT } from '@/lib/constants';
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -95,6 +104,18 @@ export default function SchoolWideImport() {
           teacherIdCache.set(teacherName, currentTeacherId);
         }
 
+        // Fetch all existing students for this teacher in one query to avoid N+1
+        // round-trips when checking for duplicates.
+        const existingSnap = await getDocs(
+          query(
+            collection(db, 'students'),
+            where('thirdPeriodTeacherId', '==', currentTeacherId),
+          ),
+        );
+        const existingNames = new Set(
+          existingSnap.docs.map((d) => (d.data().name as string ?? '').trim().toLowerCase()),
+        );
+
         let batch = writeBatch(db);
         let opCount = 0;
 
@@ -102,14 +123,7 @@ export default function SchoolWideImport() {
           const studentName = student.name.trim();
           if (!studentName) continue;
 
-          const sq = query(
-            collection(db, 'students'),
-            where('name', '==', studentName),
-            where('thirdPeriodTeacherId', '==', currentTeacherId)
-          );
-          const sSnapshot = await getDocs(sq);
-
-          if (sSnapshot.empty) {
+          if (!existingNames.has(studentName.toLowerCase())) {
             const newStudentRef = doc(collection(db, 'students'));
             batch.set(newStudentRef, {
               name: studentName,
@@ -120,7 +134,7 @@ export default function SchoolWideImport() {
             importedStudents++;
             opCount++;
 
-            if (opCount >= 450) {
+            if (opCount >= FIRESTORE_BATCH_LIMIT) {
               await batch.commit();
               batch = writeBatch(db);
               opCount = 0;

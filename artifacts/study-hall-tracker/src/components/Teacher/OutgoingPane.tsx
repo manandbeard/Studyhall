@@ -4,10 +4,11 @@ import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { differenceInMinutes } from 'date-fns';
+import type { Pass } from '@/lib/types';
 
 export default function OutgoingPane() {
   const { user } = useAuth();
-  const [passes, setPasses] = useState<any[]>([]);
+  const [passes, setPasses] = useState<Pass[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -28,12 +29,11 @@ export default function OutgoingPane() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const passData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setPasses(passData);
+        setPasses(snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pass)));
         setLoading(false);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'passes');
+        handleFirestoreError(error, OperationType.LIST, 'passes', false);
       },
     );
 
@@ -68,7 +68,7 @@ export default function OutgoingPane() {
           <p className="font-bold text-gray-500">No pending requests.</p>
         ) : (
           passes.map((pass) => {
-            const overdue = pass.status === 'in_transit' && isOverdue(pass.departedAt);
+            const overdue = pass.status === 'in_transit' && isOverdue(pass.departedAt ?? '');
             return (
               <div
                 key={pass.id}

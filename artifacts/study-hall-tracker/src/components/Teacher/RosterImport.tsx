@@ -68,34 +68,38 @@ export default function RosterImport() {
     setMessage({ text: `Importing students from ${sourceName}...`, type: 'info' });
 
     try {
+      // Fetch all existing students for this teacher in one query to avoid N+1
+      // round-trips (one per student name) for duplicate checking.
+      const existingSnap = await getDocs(
+        query(
+          collection(db, 'students'),
+          where('thirdPeriodTeacherId', '==', user.uid),
+        ),
+      );
+      const existingNames = new Set(
+        existingSnap.docs.map((d) => (d.data().name as string ?? '').trim().toLowerCase()),
+      );
+
       let importedCount = 0;
+      const newStudents = studentNames
+        .map((n) => n.trim())
+        .filter((name) => name && !existingNames.has(name.toLowerCase()));
 
-      for (const name of studentNames) {
-        const trimmedName = name.trim();
-        if (trimmedName) {
-          const q = query(
-            collection(db, 'students'),
-            where('name', '==', trimmedName),
-            where('thirdPeriodTeacherId', '==', user.uid)
-          );
-          const existing = await getDocs(q);
-
-          if (existing.empty) {
-            await addDoc(collection(db, 'students'), {
-              name: trimmedName,
-              thirdPeriodTeacherId: user.uid
-            });
-            importedCount++;
-          }
-        }
+      for (const trimmedName of newStudents) {
+        await addDoc(collection(db, 'students'), {
+          name: trimmedName,
+          thirdPeriodTeacherId: user.uid
+        });
+        importedCount++;
       }
 
       setMessage({ text: `Successfully imported ${importedCount} new students from ${sourceName}.`, type: 'success' });
       if (sourceName !== 'Manual Input') setCourses([]);
       setManualInput('');
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Import failed.';
       console.error(error);
-      setMessage({ text: error.message, type: 'error' });
+      setMessage({ text: message, type: 'error' });
     }
     setLoading(false);
   };

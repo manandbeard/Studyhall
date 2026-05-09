@@ -3,11 +3,12 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
+import type { Pass } from '@/lib/types';
 import { differenceInMinutes } from 'date-fns';
 
 export default function GlobalTransitFeed() {
   const { user } = useAuth();
-  const [passes, setPasses] = useState<any[]>([]);
+  const [passes, setPasses] = useState<Pass[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -24,21 +25,21 @@ export default function GlobalTransitFeed() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const passData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const passData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pass));
       setPasses(passData);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'passes');
+      handleFirestoreError(error, OperationType.LIST, 'passes', false);
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  const isOverdue = (departedAt: string) => {
+  const isOverdue = (departedAt: string | undefined) => {
     if (!departedAt) return false;
     return differenceInMinutes(currentTime, new Date(departedAt)) >= 5;
   };
 
-  const minutesElapsed = (departedAt: string) => {
+  const minutesElapsed = (departedAt: string | undefined) => {
     if (!departedAt) return 0;
     return differenceInMinutes(currentTime, new Date(departedAt));
   };
@@ -84,7 +85,7 @@ export default function GlobalTransitFeed() {
                   </div>
                   <p className="font-bold text-sm mt-1">→ Room {pass.destinationRoom}</p>
                   <p className="font-medium text-xs mt-0.5">
-                    Departed {new Date(pass.departedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {mins}m ago
+                    Departed {new Date(pass.departedAt ?? '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {mins}m ago
                   </p>
                 </div>
               );
@@ -114,7 +115,7 @@ export default function GlobalTransitFeed() {
                       <td className="px-4 py-3 font-black text-lg border-r-2 border-neo-border">{pass.studentName}</td>
                       <td className="px-4 py-3 font-bold border-r-2 border-neo-border">Room {pass.destinationRoom}</td>
                       <td className="px-4 py-3 font-medium border-r-2 border-neo-border">
-                        {new Date(pass.departedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(pass.departedAt ?? '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         <span className="text-xs ml-1 opacity-75">({mins}m)</span>
                       </td>
                       <td className="px-4 py-3">

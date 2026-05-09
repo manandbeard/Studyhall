@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
 import { getAdminAuth } from "../lib/admin.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "nhelland@nbend.k12.or.us";
+// No hardcoded fallback — must be configured via the ADMIN_EMAIL environment variable.
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? '';
 
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
@@ -109,8 +111,10 @@ ${csvChunk}
     }
 
     res.json({ data: JSON.parse(text) });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message ?? "Gemini request failed." });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Gemini request failed.";
+    logger.error({ err }, "Gemini parse-roster error");
+    res.status(500).json({ error: message });
   }
 });
 
