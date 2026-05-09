@@ -171,6 +171,10 @@ router.post("/passes/:passId/complete", async (req, res) => {
       }
 
       const data = passDoc.data()!;
+      // If the pass was already completed (e.g. by a mobile direct-write that
+      // skipped the server) we still clean up the lock, but skip the status
+      // update and counter decrement which would already have happened (or been
+      // deliberately skipped by the bypass — cleaning the lock is idempotent).
       const alreadyCompleted = data.status === "completed";
 
       // Permission check only applies when we still need to transition state.

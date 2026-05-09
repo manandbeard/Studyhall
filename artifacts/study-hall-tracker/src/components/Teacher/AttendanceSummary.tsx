@@ -73,8 +73,8 @@ export default function AttendanceSummary() {
       where('status', '==', 'in_transit'),
     );
 
-    let tardySnapshotOrigin: ReturnType<typeof onSnapshot> | null = null;
-    let tardySnapshotDest: ReturnType<typeof onSnapshot> | null = null;
+    let unsubscribeTardyOrigin: ReturnType<typeof onSnapshot> | null = null;
+    let unsubscribeTardyDest: ReturnType<typeof onSnapshot> | null = null;
 
     // Merge both snapshots into a de-duplicated map keyed by pass id.
     const passesFromOrigin: Record<string, any> = {};
@@ -85,7 +85,7 @@ export default function AttendanceSummary() {
       setInTransitPasses(Object.values(merged));
     };
 
-    tardySnapshotOrigin = onSnapshot(
+    unsubscribeTardyOrigin = onSnapshot(
       qTardyOrigin,
       (snapshot) => {
         for (const key of Object.keys(passesFromOrigin)) delete passesFromOrigin[key];
@@ -97,7 +97,7 @@ export default function AttendanceSummary() {
       },
     );
 
-    tardySnapshotDest = onSnapshot(
+    unsubscribeTardyDest = onSnapshot(
       qTardyDest,
       (snapshot) => {
         for (const key of Object.keys(passesFromDest)) delete passesFromDest[key];
@@ -110,8 +110,8 @@ export default function AttendanceSummary() {
     );
 
     const unsubscribeTardy = () => {
-      tardySnapshotOrigin?.();
-      tardySnapshotDest?.();
+      unsubscribeTardyOrigin?.();
+      unsubscribeTardyDest?.();
     };
 
     return () => {

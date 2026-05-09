@@ -7,6 +7,7 @@ import {
   doc,
   updateDoc,
   getDocs,
+  getDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/firebase';
@@ -69,15 +70,14 @@ export default function RosterList() {
                 .filter((id): id is string => !!id),
             ),
           ];
-          const counterDocs = await Promise.all(
-            counterIds.map((id) => getDocs(query(collection(db, 'teacherActiveCount'), where('__name__', '==', id)))),
-          );
+          // Read counter docs directly by ID (more efficient than a filtered query).
           const counterValues: Record<string, number> = {};
-          for (const snap of counterDocs) {
-            for (const d of snap.docs) {
-              counterValues[d.id] = (d.data()?.count as number) ?? 0;
-            }
-          }
+          await Promise.all(
+            counterIds.map(async (id) => {
+              const snap = await getDoc(doc(db, 'teacherActiveCount', id));
+              counterValues[id] = (snap.data()?.count as number) ?? 0;
+            }),
+          );
 
           // Count how many passes we are cancelling per destination teacher.
           const decrements: Record<string, number> = {};
@@ -97,12 +97,14 @@ export default function RosterList() {
               cancelledAt: now,
               cancelledReason: 'student_absent',
             });
-            if (passData.destinationTeacherId) {
-              const counterRef = doc(db, 'teacherActiveCount', passData.destinationTeacherId);
-              const current = counterValues[passData.destinationTeacherId] ?? 0;
-              const decrement = decrements[passData.destinationTeacherId] ?? 1;
-              batch.set(counterRef, { count: Math.max(0, current - decrement) }, { merge: true });
-            }
+          }
+
+          // Write the counter decrements once per affected teacher (not once per pass)
+          // to avoid redundant batch operations writing the same value multiple times.
+          for (const [destId, decrement] of Object.entries(decrements)) {
+            const counterRef = doc(db, 'teacherActiveCount', destId);
+            const current = counterValues[destId] ?? 0;
+            batch.set(counterRef, { count: Math.max(0, current - decrement) }, { merge: true });
           }
 
           const lockRef = doc(db, 'activeStudentPasses', student.id);

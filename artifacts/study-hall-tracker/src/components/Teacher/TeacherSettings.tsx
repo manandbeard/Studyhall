@@ -27,7 +27,8 @@ export default function TeacherSettings() {
   });
 
   // Sync form fields when the user doc changes externally (e.g. from another device).
-  // Only update when the form is not being actively saved.
+  // `saving` is intentionally excluded from deps: we only want to sync when the
+  // server pushes a change, not when a local save is in flight.
   useEffect(() => {
     if (!user || saving) return;
     setFormData({
@@ -38,8 +39,7 @@ export default function TeacherSettings() {
       studyHallCapacity: user.studyHallCapacity ?? 0,
       soundMuted: user.soundMuted ?? false,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [clearingAbsent, setClearingAbsent] = useState(false);
