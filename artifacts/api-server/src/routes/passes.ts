@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "../lib/admin.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -138,7 +138,7 @@ router.post("/passes/create", async (req, res) => {
       res.status(err.status).json({ code: err.code, error: err.message });
     } else {
       const message = err instanceof Error ? err.message : "Failed to create pass.";
-      console.error("Pass creation transaction error:", err);
+      logger.error({ err }, "Pass creation transaction error");
       res.status(500).json({ error: message });
     }
   }
@@ -171,29 +171,32 @@ router.post("/passes/:passId/complete", async (req, res) => {
       }
 
       const data = passDoc.data()!;
+      const alreadyCompleted = data.status === "completed";
 
-      if (data.status === "completed") {
-        return;
-      }
-
-      if (data.destinationTeacherId !== uid) {
+      // Permission check only applies when we still need to transition state.
+      if (!alreadyCompleted && data.destinationTeacherId !== uid) {
         throw new AppError("FORBIDDEN", "You may only complete passes for your own room.", 403);
       }
 
-      const counterRef = db.collection("teacherActiveCount").doc(data.destinationTeacherId ?? uid);
-      const counterDoc = await tx.get(counterRef);
-
-      const now = new Date().toISOString();
-      tx.update(passRef, { status: "completed", completedAt: now });
-
+      // Always clean up the lock — idempotent, and fixes the case where a
+      // direct client-side write marked the pass completed without removing it.
       if (data.studentId) {
         const lockRef = db.collection("activeStudentPasses").doc(data.studentId);
         tx.delete(lockRef);
       }
 
-      if (counterDoc.exists) {
-        const current: number = counterDoc.data()?.count ?? 0;
-        tx.set(counterRef, { count: Math.max(0, current - 1) }, { merge: true });
+      if (!alreadyCompleted) {
+        const counterRef = db.collection("teacherActiveCount").doc(
+          data.destinationTeacherId ?? uid,
+        );
+        const counterDoc = await tx.get(counterRef);
+        const now = new Date().toISOString();
+        tx.update(passRef, { status: "completed", completedAt: now });
+
+        if (counterDoc.exists) {
+          const current: number = counterDoc.data()?.count ?? 0;
+          tx.set(counterRef, { count: Math.max(0, current - 1) }, { merge: true });
+        }
       }
     });
 
@@ -203,7 +206,7 @@ router.post("/passes/:passId/complete", async (req, res) => {
       res.status(err.status).json({ code: err.code, error: err.message });
     } else {
       const message = err instanceof Error ? err.message : "Failed to complete pass.";
-      console.error("Pass complete transaction error:", err);
+      logger.error({ err }, "Pass complete transaction error");
       res.status(500).json({ error: message });
     }
   }

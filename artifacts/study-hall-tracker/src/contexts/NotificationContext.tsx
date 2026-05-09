@@ -192,6 +192,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!user) return;
     const q = query(collection(db, 'passes'), where('status', '==', 'in_transit'));
     const unsub = onSnapshot(q, (snapshot) => {
+      const currentIds = new Set(snapshot.docs.map((d) => d.id));
+      // Remove IDs that are no longer in-transit so the set doesn't grow
+      // indefinitely and so overdue notifications can fire again if needed.
+      for (const id of overdueTriggered.current) {
+        if (!currentIds.has(id)) {
+          overdueTriggered.current.delete(id);
+        }
+      }
       inTransitPassesRef.current = snapshot.docs
         .map((d): InTransitPass => {
           const data = d.data();

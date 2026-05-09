@@ -28,7 +28,7 @@ export function useTeacherAnalytics(
 
     let cancelled = false;
 
-    const fetch = async () => {
+    const loadAnalytics = async () => {
       setLoading(true);
       try {
         const cutoff = new Date();
@@ -69,7 +69,7 @@ export function useTeacherAnalytics(
       }
     };
 
-    void fetch();
+    void loadAnalytics();
     return () => {
       cancelled = true;
     };

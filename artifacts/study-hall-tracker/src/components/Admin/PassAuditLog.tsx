@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { differenceInMinutes } from 'date-fns';
@@ -11,6 +11,7 @@ export default function PassAuditLog() {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
+    // Teachers list is small — keep it live so name edits are reflected immediately.
     const unsubscribeTeachers = onSnapshot(query(collection(db, 'users')), (snapshot) => {
       const teacherMap: Record<string, string> = {};
       snapshot.docs.forEach(doc => {
@@ -18,20 +19,32 @@ export default function PassAuditLog() {
       });
       setTeachers(teacherMap);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users');
+      handleFirestoreError(error, OperationType.LIST, 'users', false);
     });
 
-    const unsubscribePasses = onSnapshot(query(collection(db, 'passes')), (snapshot) => {
-      const passData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      passData.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
-      setPasses(passData);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'passes');
-    });
+    // Passes are historical — a one-time read with a 30-day window avoids
+    // streaming the entire pass history every time this component mounts.
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const cutoffISO = thirtyDaysAgo.toISOString();
+
+    const passQuery = query(
+      collection(db, 'passes'),
+      where('requestedAt', '>=', cutoffISO),
+      orderBy('requestedAt', 'desc'),
+    );
+
+    getDocs(passQuery)
+      .then((snapshot) => {
+        const passData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+        setPasses(passData);
+      })
+      .catch((error) => {
+        handleFirestoreError(error, OperationType.LIST, 'passes', false);
+      });
 
     return () => {
       unsubscribeTeachers();
-      unsubscribePasses();
     };
   }, []);
 

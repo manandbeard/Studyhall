@@ -24,7 +24,7 @@ import {
 import { useAuth } from "@/components/AuthProvider";
 import { NeoBox, NeoButton, NeoLabel } from "@/components/NeoUI";
 import { useColors } from "@/hooks/useColors";
-import { db } from "@/lib/firebase";
+import { auth, db, API_BASE_URL } from "@/lib/firebase";
 
 interface Pass {
   id: string;
@@ -134,10 +134,16 @@ export function IncomingPane() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     try {
-      await updateDoc(doc(db, "passes", passId), {
-        status: "completed",
-        completedAt: new Date().toISOString(),
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error("Not authenticated.");
+      const res = await fetch(`${API_BASE_URL}/api/passes/${passId}/complete`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}` },
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Server error: ${res.status}`);
+      }
     } catch (err) {
       console.error("handleComplete:", err);
     }
@@ -181,15 +187,28 @@ export function IncomingPane() {
         if (s) studentName = s.name;
       }
 
-      await addDoc(collection(db, "passes"), {
-        studentId,
-        studentName,
-        originTeacherId: origin.id,
-        destinationTeacherId: user.uid,
-        destinationRoom: user.roomNumber ?? "TBD",
-        status: "pending",
-        requestedAt: new Date().toISOString(),
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error("Not authenticated.");
+
+      const res = await fetch(`${API_BASE_URL}/api/passes/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          studentId,
+          studentName,
+          originTeacherId: origin.id,
+          originRoom: origin.roomNumber ?? "",
+          destinationTeacherId: user.uid,
+          destinationRoom: user.roomNumber ?? "TBD",
+        }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Server error: ${res.status}`);
+      }
       resetForm();
       setRequestOpen(false);
       if (Platform.OS !== "web") {

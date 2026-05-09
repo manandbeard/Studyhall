@@ -33,7 +33,7 @@ export default function AttendanceSummary() {
       setRosterCount(studentData.length);
       setAbsentCount(studentData.filter((s: any) => s.isAbsent).length);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'students');
+      handleFirestoreError(error, OperationType.LIST, 'students', false);
     });
 
     const qOutgoing = query(
@@ -45,7 +45,7 @@ export default function AttendanceSummary() {
       const outgoingPasses = snapshot.docs.map(doc => doc.data());
       setOutgoingActiveCount(outgoingPasses.length);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'passes');
+      handleFirestoreError(error, OperationType.LIST, 'passes', false);
     });
 
     const qIncoming = query(
@@ -57,24 +57,62 @@ export default function AttendanceSummary() {
       const incomingPasses = snapshot.docs.map(doc => doc.data());
       setIncomingArrivedCount(incomingPasses.filter((p: any) => p.status === 'arrived').length);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'passes');
+      handleFirestoreError(error, OperationType.LIST, 'passes', false);
     });
 
-    const qTardy = query(
+    // Two queries are needed because Firestore can't do an OR across different
+    // fields in a single query. We merge and deduplicate client-side.
+    const qTardyOrigin = query(
       collection(db, 'passes'),
-      where('status', '==', 'in_transit')
+      where('originTeacherId', '==', user.uid),
+      where('status', '==', 'in_transit'),
     );
-    const unsubscribeTardy = onSnapshot(qTardy, (snapshot) => {
-      const myPasses = snapshot.docs
-        .map(doc => doc.data())
-        .filter((p: any) => {
-          const isMine = p.originTeacherId === user.uid || p.destinationTeacherId === user.uid;
-          return isMine && !!p.departedAt;
-        });
-      setInTransitPasses(myPasses);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'passes');
-    });
+    const qTardyDest = query(
+      collection(db, 'passes'),
+      where('destinationTeacherId', '==', user.uid),
+      where('status', '==', 'in_transit'),
+    );
+
+    let tardySnapshotOrigin: ReturnType<typeof onSnapshot> | null = null;
+    let tardySnapshotDest: ReturnType<typeof onSnapshot> | null = null;
+
+    // Merge both snapshots into a de-duplicated map keyed by pass id.
+    const passesFromOrigin: Record<string, any> = {};
+    const passesFromDest: Record<string, any> = {};
+
+    const mergeTardyPasses = () => {
+      const merged = { ...passesFromOrigin, ...passesFromDest };
+      setInTransitPasses(Object.values(merged));
+    };
+
+    tardySnapshotOrigin = onSnapshot(
+      qTardyOrigin,
+      (snapshot) => {
+        for (const key of Object.keys(passesFromOrigin)) delete passesFromOrigin[key];
+        for (const d of snapshot.docs) passesFromOrigin[d.id] = d.data();
+        mergeTardyPasses();
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'passes', false);
+      },
+    );
+
+    tardySnapshotDest = onSnapshot(
+      qTardyDest,
+      (snapshot) => {
+        for (const key of Object.keys(passesFromDest)) delete passesFromDest[key];
+        for (const d of snapshot.docs) passesFromDest[d.id] = d.data();
+        mergeTardyPasses();
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'passes', false);
+      },
+    );
+
+    const unsubscribeTardy = () => {
+      tardySnapshotOrigin?.();
+      tardySnapshotDest?.();
+    };
 
     return () => {
       unsubscribeStudents();

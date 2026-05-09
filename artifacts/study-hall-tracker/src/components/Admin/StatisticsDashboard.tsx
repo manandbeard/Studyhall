@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { differenceInMinutes } from 'date-fns';
@@ -161,18 +161,22 @@ export default function StatisticsDashboard() {
         setTeacherNames(nameMap);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'users');
+        handleFirestoreError(error, OperationType.LIST, 'users', false);
       },
     );
 
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const cutoffISO = thirtyDaysAgo.toISOString();
+
     const unsubscribePasses = onSnapshot(
-      query(collection(db, 'passes')),
+      query(collection(db, 'passes'), where('requestedAt', '>=', cutoffISO)),
       (snapshot) => {
         const passData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         setPasses(passData);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'passes');
+        handleFirestoreError(error, OperationType.LIST, 'passes', false);
       },
     );
 

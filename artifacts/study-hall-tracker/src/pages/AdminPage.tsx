@@ -16,8 +16,9 @@ import StatisticsDashboard from '@/components/Admin/StatisticsDashboard';
 import PassAuditLog from '@/components/Admin/PassAuditLog';
 import SchoolWideImport from '@/components/Admin/SchoolWideImport';
 import { Archive, AlertTriangle } from 'lucide-react';
+import { FIRESTORE_BATCH_LIMIT } from '@/lib/constants';
 
-const BATCH_SIZE = 450;
+const BATCH_SIZE = FIRESTORE_BATCH_LIMIT;
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();

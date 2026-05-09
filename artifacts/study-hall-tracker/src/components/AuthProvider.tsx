@@ -24,10 +24,12 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/firebase';
 
+import { FIRESTORE_BATCH_LIMIT } from '@/lib/constants';
+
 export const SCHOOL_DOMAIN =
   import.meta.env.VITE_SCHOOL_DOMAIN ?? 'nbend.k12.or.us';
-export const ADMIN_EMAIL =
-  import.meta.env.VITE_ADMIN_EMAIL ?? `nhelland@${SCHOOL_DOMAIN}`;
+// No real-person email as fallback — must be set via VITE_ADMIN_EMAIL env var.
+export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL ?? '';
 
 export type AppRole = 'teacher' | 'admin';
 
@@ -47,6 +49,7 @@ interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
   signingIn: boolean;
+  error: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -55,6 +58,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   signingIn: false,
+  error: null,
   signIn: async () => {},
   signOut: async () => {},
 });
@@ -76,7 +80,7 @@ function buildGoogleProvider(): GoogleAuthProvider {
   return provider;
 }
 
-const BATCH_LIMIT = 450;
+const BATCH_LIMIT = FIRESTORE_BATCH_LIMIT;
 
 async function migrateReferences(
   oldUid: string,
@@ -128,10 +132,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getRedirectResult(auth).catch((err) => {
       console.error('Redirect sign-in error:', err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Redirect sign-in failed. Please try again.',
+      );
     });
   }, []);
 
@@ -274,7 +284,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, signingIn, signIn, signOut }}
+      value={{ user, loading, signingIn, error, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>

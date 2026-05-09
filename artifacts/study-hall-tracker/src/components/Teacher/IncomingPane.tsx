@@ -12,6 +12,7 @@ import { db, auth } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { AlertCircle, Users } from 'lucide-react';
+import type { Pass, Student, Teacher } from '@/lib/types';
 
 interface NewStudentPending {
   name: string;
@@ -22,9 +23,9 @@ interface NewStudentPending {
 
 export default function IncomingPane() {
   const { user } = useAuth();
-  const [passes, setPasses] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
-  const [teachers, setTeachers] = useState<any[]>([]);
+  const [passes, setPasses] = useState<Pass[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [selectedOrigin, setSelectedOrigin] = useState('');
   const [loading, setLoading] = useState(true);
@@ -47,32 +48,32 @@ export default function IncomingPane() {
     const unsubscribePasses = onSnapshot(
       qPasses,
       (snapshot) => {
-        setPasses(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        setPasses(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Pass)));
         setLoading(false);
       },
-      (error) => handleFirestoreError(error, OperationType.LIST, 'passes'),
+      (error) => handleFirestoreError(error, OperationType.LIST, 'passes', false),
     );
 
     const unsubscribeStudents = onSnapshot(
       collection(db, 'students'),
       (snapshot) => {
-        const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        data.sort((a: any, b: any) => a.name.localeCompare(b.name));
+        const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Student));
+        data.sort((a, b) => a.name.localeCompare(b.name));
         setStudents(data);
       },
-      (error) => handleFirestoreError(error, OperationType.LIST, 'students'),
+      (error) => handleFirestoreError(error, OperationType.LIST, 'students', false),
     );
 
     const unsubscribeTeachers = onSnapshot(
       query(collection(db, 'users'), where('role', '==', 'teacher')),
       (snapshot) => {
         const data = snapshot.docs
-          .map(d => ({ id: d.id, ...d.data() } as any))
-          .filter((t: any) => !t.isAway);
-        data.sort((a: any, b: any) => a.name.localeCompare(b.name));
+          .map(d => ({ id: d.id, ...d.data() } as Teacher))
+          .filter((t) => !t.isAway);
+        data.sort((a, b) => a.name.localeCompare(b.name));
         setTeachers(data);
       },
-      (error) => handleFirestoreError(error, OperationType.LIST, 'users'),
+      (error) => handleFirestoreError(error, OperationType.LIST, 'users', false),
     );
 
     const unsubscribeUserDoc = onSnapshot(
