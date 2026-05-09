@@ -55,20 +55,23 @@ function stripProtocol(domain) {
 }
 
 function getDeploymentDomain() {
-  if (process.env.REPLIT_INTERNAL_APP_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_INTERNAL_APP_DOMAIN);
-  }
+  const domainEnvVars = [
+    "REPLIT_INTERNAL_APP_DOMAIN",
+    "REPLIT_DEV_DOMAIN",
+    "EXPO_PUBLIC_DOMAIN",
+    "VERCEL_PROJECT_PRODUCTION_URL",
+    "VERCEL_BRANCH_URL",
+    "VERCEL_URL",
+  ];
 
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
-  }
-
-  if (process.env.EXPO_PUBLIC_DOMAIN) {
-    return stripProtocol(process.env.EXPO_PUBLIC_DOMAIN);
+  for (const envVar of domainEnvVars) {
+    const value = process.env[envVar];
+    if (!value) continue;
+    return stripProtocol(value);
   }
 
   console.error(
-    "ERROR: No deployment domain found. Set REPLIT_INTERNAL_APP_DOMAIN, REPLIT_DEV_DOMAIN, or EXPO_PUBLIC_DOMAIN",
+    "ERROR: No deployment domain found. Set one of: REPLIT_INTERNAL_APP_DOMAIN, REPLIT_DEV_DOMAIN, EXPO_PUBLIC_DOMAIN, VERCEL_PROJECT_PRODUCTION_URL, VERCEL_BRANCH_URL, or VERCEL_URL",
   );
   process.exit(1);
 }
