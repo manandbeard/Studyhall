@@ -3,6 +3,7 @@ import { getAdminAuth, getAdminDb } from "../lib/admin.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
+const FIRESTORE_BATCH_LIMIT = 450;
 
 class AppError extends Error {
   constructor(
@@ -239,8 +240,6 @@ router.post("/admin/archive-day", async (req, res) => {
   }
 
   const db = getAdminDb();
-  const BATCH_SIZE = 450;
-
   try {
     const activeStatuses = ["pending", "in_transit", "arrived"];
     const [passesSnap, studentsSnap, locksSnap, countersSnap] = await Promise.all([
@@ -277,16 +276,16 @@ router.post("/admin/archive-day", async (req, res) => {
       writeCount = 0;
     };
 
-    const enqueue = async (fn: (b: FirebaseFirestore.WriteBatch) => void) => {
+    const addToBatch = async (fn: (b: FirebaseFirestore.WriteBatch) => void) => {
       fn(batch);
       writeCount += 1;
-      if (writeCount >= BATCH_SIZE) {
+      if (writeCount >= FIRESTORE_BATCH_LIMIT) {
         await flushBatch();
       }
     };
 
     for (const passDoc of passesSnap.docs) {
-      await enqueue((b) =>
+      await addToBatch((b) =>
         b.update(passDoc.ref, {
           status: "completed",
           completedAt: now,
@@ -296,15 +295,15 @@ router.post("/admin/archive-day", async (req, res) => {
     }
 
     for (const lockDoc of locksSnap.docs) {
-      await enqueue((b) => b.delete(lockDoc.ref));
+      await addToBatch((b) => b.delete(lockDoc.ref));
     }
 
     for (const counterDoc of countersSnap.docs) {
-      await enqueue((b) => b.set(counterDoc.ref, { count: 0 }, { merge: true }));
+      await addToBatch((b) => b.set(counterDoc.ref, { count: 0 }));
     }
 
     for (const studentDoc of studentsSnap.docs) {
-      await enqueue((b) => b.update(studentDoc.ref, { isAbsent: false }));
+      await addToBatch((b) => b.update(studentDoc.ref, { isAbsent: false }));
     }
 
     await flushBatch();

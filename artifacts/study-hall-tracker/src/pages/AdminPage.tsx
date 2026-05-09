@@ -9,6 +9,12 @@ import PassAuditLog from '@/components/Admin/PassAuditLog';
 import SchoolWideImport from '@/components/Admin/SchoolWideImport';
 import { Archive, AlertTriangle } from 'lucide-react';
 
+const toObjectOrEmpty = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object' ? value as Record<string, unknown> : {};
+
+const toCountOrZero = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
   const [, setLocation] = useLocation();
@@ -25,6 +31,10 @@ export default function AdminDashboard() {
   }, [user, loading, setLocation]);
 
   if (loading || !user) return null;
+  const archiveResultClasses =
+    archiveResultTone === 'success'
+      ? 'bg-neo-green text-neo-border'
+      : 'bg-neo-red text-white';
 
   const handleArchiveDay = async () => {
     if (!archiveConfirm) {
@@ -50,7 +60,7 @@ export default function AdminDashboard() {
         },
       });
 
-      const body = await response.json().catch(() => ({} as Record<string, unknown>));
+      const body = toObjectOrEmpty(await response.json().catch(() => ({})));
       if (!response.ok) {
         const fallback =
           response.status === 401
@@ -61,8 +71,8 @@ export default function AdminDashboard() {
         throw new Error(typeof body.error === 'string' ? body.error : fallback);
       }
 
-      const totalPasses = Number(body.totalPassesArchived ?? 0);
-      const totalAbsents = Number(body.totalAbsentsCleared ?? 0);
+      const totalPasses = toCountOrZero(body.totalPassesArchived);
+      const totalAbsents = toCountOrZero(body.totalAbsentsCleared);
 
       setArchiveResultTone('success');
       setArchiveResult(
@@ -89,7 +99,7 @@ export default function AdminDashboard() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {archiveResult && (
-            <span className={`${archiveResultTone === 'success' ? 'bg-neo-green text-neo-border' : 'bg-neo-red text-white'} border-2 border-neo-border px-3 py-1 font-black text-xs uppercase`}>
+            <span className={`${archiveResultClasses} border-2 border-neo-border px-3 py-1 font-black text-xs uppercase`}>
               {archiveResult}
             </span>
           )}
