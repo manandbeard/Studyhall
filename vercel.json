@@ -1,5 +1,8 @@
 {
   "installCommand": "pnpm install",
   "buildCommand": "pnpm --filter @workspace/study-hall-tracker run build",
-  "outputDirectory": "artifacts/study-hall-tracker/dist/public"
+  "outputDirectory": "artifacts/study-hall-tracker/dist/public",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" }
+  ]
 }

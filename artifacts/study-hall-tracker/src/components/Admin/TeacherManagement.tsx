@@ -71,7 +71,17 @@ export default function TeacherManagement() {
 
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof body.error === 'string' ? body.error : 'Failed to invite teacher.');
+        const fallback =
+          response.status === 401
+            ? 'Session expired. Please sign in again.'
+            : response.status === 403
+              ? 'Admin permission required.'
+              : response.status === 404
+                ? 'Invite endpoint not found (404). The API server may not be running or reachable.'
+                : response.status === 409
+                  ? 'A teacher with that email already exists.'
+                  : `Failed to invite teacher (HTTP ${response.status}).`;
+        throw new Error(typeof body.error === 'string' ? body.error : fallback);
       }
 
       setInviteForm({ name: '', roomNumber: '', email: '' });

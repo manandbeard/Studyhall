@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: admin
+    description: Admin-only operations (requires Firebase ID token with admin role)
 paths:
   /healthz:
     get:
@@ -24,7 +26,104 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /admin/archive-day:
+    post:
+      operationId: archiveDay
+      tags: [admin]
+      summary: Archive the day and reset active passes
+      description: >
+        Marks all active passes as completed, clears all active-pass locks and
+        teacher counters, clears student absent flags, and writes a daily
+        archive summary document.  Requires a valid Firebase ID token for a
+        user with `role: "admin"` in the `users` collection.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Day archived successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveDayResponse"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/invite-teacher:
+    post:
+      operationId: inviteTeacher
+      tags: [admin]
+      summary: Create a placeholder teacher account by email
+      description: >
+        Writes a placeholder `users` document with `isPlaceholder: true`.
+        When the teacher signs in with Google the placeholder is claimed and
+        merged with their real Firebase Auth uid.  Requires a valid Firebase
+        ID token for a user with `role: "admin"`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteTeacherRequest"
+      responses:
+        "201":
+          description: Placeholder teacher created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteTeacherResponse"
+        "400":
+          description: Missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid Firebase ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A teacher with that email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +132,81 @@ components:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+      required:
+        - error
+    ArchiveDayResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        totalPassesArchived:
+          type: integer
+        totalAbsentsCleared:
+          type: integer
+        teacherPassCounts:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+        - ok
+        - totalPassesArchived
+        - totalAbsentsCleared
+        - teacherPassCounts
+    InviteTeacherRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Teacher's display name
+        email:
+          type: string
+          format: email
+          description: Teacher's school email address
+        roomNumber:
+          type: string
+          description: Classroom room number (defaults to "TBD")
+      required:
+        - name
+        - email
+    InviteTeacherResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        id:
+          type: string
+          description: Firestore document ID of the new placeholder user
+        teacher:
+          type: object
+          properties:
+            id:
+              type: string
+            email:
+              type: string
+            name:
+              type: string
+            role:
+              type: string
+            roomNumber:
+              type: string
+            isPlaceholder:
+              type: boolean
+          required:
+            - id
+            - email
+            - name
+            - role
+            - roomNumber
+            - isPlaceholder
+      required:
+        - ok
+        - id
+        - teacher
 
