@@ -53,6 +53,21 @@ function normalizeEmail(email: unknown): string {
   return typeof email === "string" ? email.trim().toLowerCase() : "";
 }
 
+// Simple in-memory rate limiter (resets per minute per key)
+const inviteRateCounts = new Map<string, { count: number; resetAt: number }>();
+
+function isInviteRateLimited(uid: string, maxPerMinute = 20): boolean {
+  const now = Date.now();
+  const entry = inviteRateCounts.get(uid);
+  if (!entry || now > entry.resetAt) {
+    inviteRateCounts.set(uid, { count: 1, resetAt: now + 60_000 });
+    return false;
+  }
+  if (entry.count >= maxPerMinute) return true;
+  entry.count++;
+  return false;
+}
+
 router.post("/passes/create", async (req, res) => {
   let uid: string;
   try {
@@ -341,20 +356,26 @@ router.post("/admin/archive-day", async (req, res) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to archive day.";
-    logger.error({ err }, "Archive day/reset error");
+    logger.error({ err, uid, endpoint: "POST /admin/archive-day" }, "Archive day/reset error");
     res.status(500).json({ error: message });
   }
 });
 
 router.post("/admin/invite-teacher", async (req, res) => {
+  let uid: string;
   try {
-    await verifyAdmin(req.headers.authorization);
+    uid = await verifyAdmin(req.headers.authorization);
   } catch (err) {
     if (err instanceof AppError) {
       res.status(err.status).json({ code: err.code, error: err.message });
     } else {
       res.status(500).json({ error: "Unexpected auth error." });
     }
+    return;
+  }
+
+  if (isInviteRateLimited(uid)) {
+    res.status(429).json({ error: "Too many requests. Please wait before retrying." });
     return;
   }
 
@@ -416,7 +437,7 @@ router.post("/admin/invite-teacher", async (req, res) => {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to invite teacher.";
-    logger.error({ err }, "Invite teacher error");
+    logger.error({ err, uid, email, endpoint: "POST /admin/invite-teacher" }, "Invite teacher error");
     res.status(500).json({ error: message });
   }
 });

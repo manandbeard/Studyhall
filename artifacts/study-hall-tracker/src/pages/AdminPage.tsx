@@ -67,7 +67,9 @@ export default function AdminDashboard() {
             ? 'Session expired. Please sign in again.'
             : response.status === 403
               ? 'Admin permission required for archive/reset.'
-              : 'Archive failed. Please try again.';
+              : response.status === 404
+                ? 'Archive endpoint not found (404). The API server may not be running or reachable.'
+                : `Archive failed (HTTP ${response.status}). Please try again.`;
         throw new Error(typeof body.error === 'string' ? body.error : fallback);
       }
 
