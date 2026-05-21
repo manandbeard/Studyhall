@@ -1,5 +1,5 @@
 {
-  "installCommand": "corepack enable && corepack prepare pnpm@11.2.2 --activate && pnpm install --no-frozen-lockfile",
+  "installCommand": "corepack enable && corepack prepare pnpm@10.19.0 --activate && pnpm install --no-frozen-lockfile",
   "buildCommand": "pnpm --filter @workspace/study-hall-tracker run build",
   "outputDirectory": "artifacts/study-hall-tracker/dist/public",
   "rewrites": [
