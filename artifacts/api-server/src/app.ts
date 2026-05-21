@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import express, { type ErrorRequestHandler } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import { pinoHttp } from "pino-http";
 import router from "./routes/index.js";
@@ -41,7 +41,12 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
-const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+const errorHandler = (
+  err: unknown,
+  _req: Request,
+  res: Response,
+  _next: NextFunction,
+): void => {
   logger.error({ err }, "Unhandled request error");
   if (res.headersSent) {
     return;
