@@ -49,6 +49,24 @@ async function verifyAdmin(authHeader: string | undefined): Promise<string> {
   return uid;
 }
 
+async function verifyTeacherOrAdmin(uid: string): Promise<"teacher" | "admin"> {
+  try {
+    const userDoc = await getAdminDb().collection("users").doc(uid).get();
+    const role = userDoc.data()?.role;
+    if (role !== "teacher" && role !== "admin") {
+      throw new AppError("FORBIDDEN", "Teacher or admin access is required.", 403);
+    }
+    return role;
+  } catch (err) {
+    if (err instanceof AppError) {
+      throw err;
+    }
+    const message =
+      err instanceof Error ? err.message : "Failed to verify user role.";
+    throw new AppError("ROLE_CHECK_FAILED", message, 500);
+  }
+}
+
 function normalizeEmail(email: unknown): string {
   return typeof email === "string" ? email.trim().toLowerCase() : "";
 }
@@ -254,6 +272,123 @@ router.post("/passes/:passId/complete", async (req, res) => {
       logger.error({ err }, "Pass complete transaction error");
       res.status(500).json({ error: message });
     }
+  }
+});
+
+router.post("/roster/clear", async (req, res) => {
+  let uid: string;
+  try {
+    uid = await verifyToken(req.headers.authorization);
+    await verifyTeacherOrAdmin(uid);
+  } catch (err) {
+    if (err instanceof AppError) {
+      res.status(err.status).json({ code: err.code, error: err.message });
+    } else {
+      res.status(500).json({ error: "Unexpected auth error." });
+    }
+    return;
+  }
+
+  const db = getAdminDb();
+  const now = new Date().toISOString();
+  const activeStatuses = ["pending", "in_transit", "arrived"];
+
+  try {
+    const [rosterSnapshot, activePassesSnapshot] = await Promise.all([
+      db.collection("students").where("thirdPeriodTeacherId", "==", uid).get(),
+      db.collection("passes").where("originTeacherId", "==", uid).where("status", "in", activeStatuses).get(),
+    ]);
+
+    if (rosterSnapshot.empty) {
+      res.status(200).json({ ok: true, clearedStudents: 0, cancelledPasses: 0 });
+      return;
+    }
+
+    const studentIds = new Set(
+      rosterSnapshot.docs.map((studentDoc) => studentDoc.id),
+    );
+    const activePassDocs = activePassesSnapshot.docs.filter((passDoc) => {
+      const studentId = passDoc.data().studentId as string | undefined;
+      return typeof studentId === "string" && studentIds.has(studentId);
+    });
+
+    const decrements: Record<string, number> = {};
+    for (const passDoc of activePassDocs) {
+      const destinationTeacherId = passDoc.data()
+        .destinationTeacherId as string | undefined;
+      if (destinationTeacherId) {
+        decrements[destinationTeacherId] =
+          (decrements[destinationTeacherId] ?? 0) + 1;
+      }
+    }
+
+    const counterIds = Object.keys(decrements);
+    const counterValues: Record<string, number> = {};
+    await Promise.all(
+      counterIds.map(async (counterId) => {
+        const snap = await db.collection("teacherActiveCount").doc(counterId).get();
+        counterValues[counterId] = (snap.data()?.count as number) ?? 0;
+      }),
+    );
+
+    let batch = db.batch();
+    let writeCount = 0;
+
+    const flushBatch = async () => {
+      if (writeCount === 0) return;
+      await batch.commit();
+      batch = db.batch();
+      writeCount = 0;
+    };
+
+    const addToBatch = async (fn: (b: FirebaseFirestore.WriteBatch) => void) => {
+      fn(batch);
+      writeCount += 1;
+      if (writeCount >= FIRESTORE_BATCH_LIMIT) {
+        await flushBatch();
+      }
+    };
+
+    for (const passDoc of activePassDocs) {
+      await addToBatch((b) =>
+        b.update(passDoc.ref, {
+          cancelledAt: now,
+          cancelledReason: "roster_cleared",
+          status: "cancelled",
+        }),
+      );
+    }
+
+    for (const [destinationTeacherId, decrement] of Object.entries(decrements)) {
+      await addToBatch((b) =>
+        b.set(
+          db.collection("teacherActiveCount").doc(destinationTeacherId),
+          { count: Math.max(0, (counterValues[destinationTeacherId] ?? 0) - decrement) },
+          { merge: true },
+        ),
+      );
+    }
+
+    for (const studentDoc of rosterSnapshot.docs) {
+      await addToBatch((b) =>
+        b.update(studentDoc.ref, { thirdPeriodTeacherId: "" }),
+      );
+      await addToBatch((b) =>
+        b.delete(db.collection("activeStudentPasses").doc(studentDoc.id)),
+      );
+    }
+
+    await flushBatch();
+
+    res.status(200).json({
+      ok: true,
+      cancelledPasses: activePassDocs.length,
+      clearedStudents: rosterSnapshot.size,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to clear roster.";
+    logger.error({ err, uid, endpoint: "POST /roster/clear" }, "Roster clear error");
+    res.status(500).json({ error: message });
   }
 });
 
