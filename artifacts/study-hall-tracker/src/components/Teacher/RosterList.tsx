@@ -10,10 +10,9 @@ import {
   getDoc,
   writeBatch,
 } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { auth, db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
-import { FIRESTORE_BATCH_LIMIT } from '@/lib/constants';
 import type { Student } from '@/lib/types';
 import { UserX, UserCheck, Search, Edit3, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -149,109 +148,39 @@ export default function RosterList() {
     setClearNotice(null);
 
     try {
-      const rosterQuery = query(
-        collection(db, 'students'),
-        where('thirdPeriodTeacherId', '==', user.uid),
-      );
-      const activePassesQuery = query(
-        collection(db, 'passes'),
-        where('originTeacherId', '==', user.uid),
-        where('status', 'in', ['pending', 'in_transit', 'arrived']),
-      );
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error('Authentication error. Please sign out and sign back in.');
+      }
 
-      const [rosterSnapshot, activePassesSnapshot] = await Promise.all([
-        getDocs(rosterQuery),
-        getDocs(activePassesQuery),
-      ]);
+      const response = await fetch('/api/roster/clear', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
 
-      if (rosterSnapshot.empty) {
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error ?? 'Failed to clear roster.');
+      }
+
+      const clearedStudents = Number(body.clearedStudents ?? 0);
+      const cancelledPasses = Number(body.cancelledPasses ?? 0);
+
+      if (clearedStudents === 0) {
         setClearNotice('Roster is already empty.');
         setClearConfirm(false);
         return;
       }
 
-      const studentIds = new Set(rosterSnapshot.docs.map((studentDoc) => studentDoc.id));
-      const activePassDocs = activePassesSnapshot.docs.filter((passDoc) =>
-        studentIds.has((passDoc.data().studentId as string | undefined) ?? ''),
-      );
-
-      const counterIds = [
-        ...new Set(
-          activePassDocs
-            .map((passDoc) => passDoc.data().destinationTeacherId as string | undefined)
-            .filter((id): id is string => !!id),
-        ),
-      ];
-      const counterValues: Record<string, number> = {};
-      await Promise.all(
-        counterIds.map(async (id) => {
-          const counterSnapshot = await getDoc(doc(db, 'teacherActiveCount', id));
-          counterValues[id] = (counterSnapshot.data()?.count as number) ?? 0;
-        }),
-      );
-
-      const decrements: Record<string, number> = {};
-      for (const passDoc of activePassDocs) {
-        const destinationTeacherId = passDoc.data().destinationTeacherId as string | undefined;
-        if (destinationTeacherId) {
-          decrements[destinationTeacherId] = (decrements[destinationTeacherId] ?? 0) + 1;
-        }
-      }
-
-      const now = new Date().toISOString();
-      let batch = writeBatch(db);
-      let writeCount = 0;
-
-      const flushBatch = async () => {
-        if (writeCount === 0) return;
-        await batch.commit();
-        batch = writeBatch(db);
-        writeCount = 0;
-      };
-
-      const addToBatch = async (writer: (nextBatch: ReturnType<typeof writeBatch>) => void) => {
-        writer(batch);
-        writeCount += 1;
-        if (writeCount >= FIRESTORE_BATCH_LIMIT) {
-          await flushBatch();
-        }
-      };
-
-      for (const passDoc of activePassDocs) {
-        await addToBatch((nextBatch) =>
-          nextBatch.update(passDoc.ref, {
-            cancelledAt: now,
-            cancelledReason: 'roster_cleared',
-            status: 'cancelled',
-          }),
-        );
-      }
-
-      for (const [destinationTeacherId, decrement] of Object.entries(decrements)) {
-        await addToBatch((nextBatch) =>
-          nextBatch.set(
-            doc(db, 'teacherActiveCount', destinationTeacherId),
-            { count: Math.max(0, (counterValues[destinationTeacherId] ?? 0) - decrement) },
-            { merge: true },
-          ),
-        );
-      }
-
-      for (const studentDoc of rosterSnapshot.docs) {
-        await addToBatch((nextBatch) => nextBatch.delete(studentDoc.ref));
-        await addToBatch((nextBatch) =>
-          nextBatch.delete(doc(db, 'activeStudentPasses', studentDoc.id)),
-        );
-      }
-
-      await flushBatch();
-
       setClearNotice(
-        `Cleared ${rosterSnapshot.size} student${rosterSnapshot.size === 1 ? '' : 's'} and cancelled ${activePassDocs.length} active pass${activePassDocs.length === 1 ? '' : 'es'}.`,
+        `Cleared ${clearedStudents} student${clearedStudents === 1 ? '' : 's'} and cancelled ${cancelledPasses} active pass${cancelledPasses === 1 ? '' : 'es'}.`,
       );
       setClearConfirm(false);
       setSearchTerm('');
     } catch (error) {
+      setClearConfirm(false);
       handleFirestoreError(error, OperationType.DELETE, `students?thirdPeriodTeacherId=${user.uid}`);
     } finally {
       setClearingRoster(false);
