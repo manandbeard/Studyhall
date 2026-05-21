@@ -1,9 +1,9 @@
-import { Router, type IRouter } from "express";
-import healthRouter from "./health";
-import geminiRouter from "./gemini";
-import passesRouter from "./passes";
+import { Router } from "express";
+import healthRouter from "./health.js";
+import geminiRouter from "./gemini.js";
+import passesRouter from "./passes.js";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.use(healthRouter);
 router.use(geminiRouter);
