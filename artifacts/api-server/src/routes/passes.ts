@@ -30,11 +30,27 @@ async function verifyToken(authHeader: string | undefined): Promise<string> {
 
 async function verifyAdmin(authHeader: string | undefined): Promise<string> {
   const uid = await verifyToken(authHeader);
-  const userDoc = await getAdminDb().collection("users").doc(uid).get();
-  if (!userDoc.exists || userDoc.data()?.role !== "admin") {
-    throw new AppError("FORBIDDEN", "Admin privileges are required.", 403);
+  try {
+    const userDoc = await getAdminDb().collection("users").doc(uid).get();
+    if (!userDoc.exists || userDoc.data()?.role !== "admin") {
+      throw new AppError("FORBIDDEN", "Admin privileges are required.", 403);
+    }
+  } catch (err) {
+    if (err instanceof AppError) {
+      throw err;
+    }
+
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Failed to verify admin privileges.";
+    throw new AppError("ADMIN_CHECK_FAILED", message, 500);
   }
   return uid;
+}
+
+function normalizeEmail(email: unknown): string {
+  return typeof email === "string" ? email.trim().toLowerCase() : "";
 }
 
 router.post("/passes/create", async (req, res) => {
@@ -326,6 +342,81 @@ router.post("/admin/archive-day", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to archive day.";
     logger.error({ err }, "Archive day/reset error");
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post("/admin/invite-teacher", async (req, res) => {
+  try {
+    await verifyAdmin(req.headers.authorization);
+  } catch (err) {
+    if (err instanceof AppError) {
+      res.status(err.status).json({ code: err.code, error: err.message });
+    } else {
+      res.status(500).json({ error: "Unexpected auth error." });
+    }
+    return;
+  }
+
+  const name =
+    typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  const email = normalizeEmail(req.body?.email);
+  const roomNumber =
+    typeof req.body?.roomNumber === "string"
+      ? req.body.roomNumber.trim()
+      : "";
+
+  if (!name || !email) {
+    res.status(400).json({ error: "Teacher name and email are required." });
+    return;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "Enter a valid email address." });
+    return;
+  }
+
+  try {
+    const db = getAdminDb();
+    const existingTeacher = await db
+      .collection("users")
+      .where("email", "==", email)
+      .limit(1)
+      .get();
+
+    if (!existingTeacher.empty) {
+      res.status(409).json({
+        error: "A teacher with that email already exists.",
+      });
+      return;
+    }
+
+    const createdAt = new Date().toISOString();
+    const inviteRef = await db.collection("users").add({
+      email,
+      isPlaceholder: true,
+      invitedAt: createdAt,
+      name,
+      role: "teacher",
+      roomNumber: roomNumber || "TBD",
+    });
+
+    res.status(201).json({
+      id: inviteRef.id,
+      ok: true,
+      teacher: {
+        email,
+        id: inviteRef.id,
+        isPlaceholder: true,
+        name,
+        role: "teacher",
+        roomNumber: roomNumber || "TBD",
+      },
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to invite teacher.";
+    logger.error({ err }, "Invite teacher error");
     res.status(500).json({ error: message });
   }
 });
