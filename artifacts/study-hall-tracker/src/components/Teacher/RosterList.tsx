@@ -13,8 +13,9 @@ import {
 import { db } from '@/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
+import { FIRESTORE_BATCH_LIMIT } from '@/lib/constants';
 import type { Student } from '@/lib/types';
-import { UserX, UserCheck, Search, Edit3 } from 'lucide-react';
+import { UserX, UserCheck, Search, Edit3, Trash2, AlertTriangle } from 'lucide-react';
 
 export default function RosterList() {
   const { user } = useAuth();
@@ -24,6 +25,9 @@ export default function RosterList() {
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [notesValue, setNotesValue] = useState('');
   const [cancelNotice, setCancelNotice] = useState<string | null>(null);
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [clearingRoster, setClearingRoster] = useState(false);
+  const [clearNotice, setClearNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -134,6 +138,126 @@ export default function RosterList() {
     }
   };
 
+  const clearRoster = async () => {
+    if (!user) return;
+    if (!clearConfirm) {
+      setClearConfirm(true);
+      return;
+    }
+
+    setClearingRoster(true);
+    setClearNotice(null);
+
+    try {
+      const rosterQuery = query(
+        collection(db, 'students'),
+        where('thirdPeriodTeacherId', '==', user.uid),
+      );
+      const activePassesQuery = query(
+        collection(db, 'passes'),
+        where('originTeacherId', '==', user.uid),
+        where('status', 'in', ['pending', 'in_transit', 'arrived']),
+      );
+
+      const [rosterSnapshot, activePassesSnapshot] = await Promise.all([
+        getDocs(rosterQuery),
+        getDocs(activePassesQuery),
+      ]);
+
+      if (rosterSnapshot.empty) {
+        setClearNotice('Roster is already empty.');
+        setClearConfirm(false);
+        return;
+      }
+
+      const studentIds = new Set(rosterSnapshot.docs.map((studentDoc) => studentDoc.id));
+      const activePassDocs = activePassesSnapshot.docs.filter((passDoc) =>
+        studentIds.has((passDoc.data().studentId as string | undefined) ?? ''),
+      );
+
+      const counterIds = [
+        ...new Set(
+          activePassDocs
+            .map((passDoc) => passDoc.data().destinationTeacherId as string | undefined)
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      const counterValues: Record<string, number> = {};
+      await Promise.all(
+        counterIds.map(async (id) => {
+          const counterSnapshot = await getDoc(doc(db, 'teacherActiveCount', id));
+          counterValues[id] = (counterSnapshot.data()?.count as number) ?? 0;
+        }),
+      );
+
+      const decrements: Record<string, number> = {};
+      for (const passDoc of activePassDocs) {
+        const destinationTeacherId = passDoc.data().destinationTeacherId as string | undefined;
+        if (destinationTeacherId) {
+          decrements[destinationTeacherId] = (decrements[destinationTeacherId] ?? 0) + 1;
+        }
+      }
+
+      const now = new Date().toISOString();
+      let batch = writeBatch(db);
+      let writeCount = 0;
+
+      const flushBatch = async () => {
+        if (writeCount === 0) return;
+        await batch.commit();
+        batch = writeBatch(db);
+        writeCount = 0;
+      };
+
+      const addToBatch = async (writer: (nextBatch: ReturnType<typeof writeBatch>) => void) => {
+        writer(batch);
+        writeCount += 1;
+        if (writeCount >= FIRESTORE_BATCH_LIMIT) {
+          await flushBatch();
+        }
+      };
+
+      for (const passDoc of activePassDocs) {
+        await addToBatch((nextBatch) =>
+          nextBatch.update(passDoc.ref, {
+            cancelledAt: now,
+            cancelledReason: 'roster_cleared',
+            status: 'cancelled',
+          }),
+        );
+      }
+
+      for (const [destinationTeacherId, decrement] of Object.entries(decrements)) {
+        await addToBatch((nextBatch) =>
+          nextBatch.set(
+            doc(db, 'teacherActiveCount', destinationTeacherId),
+            { count: Math.max(0, (counterValues[destinationTeacherId] ?? 0) - decrement) },
+            { merge: true },
+          ),
+        );
+      }
+
+      for (const studentDoc of rosterSnapshot.docs) {
+        await addToBatch((nextBatch) => nextBatch.delete(studentDoc.ref));
+        await addToBatch((nextBatch) =>
+          nextBatch.delete(doc(db, 'activeStudentPasses', studentDoc.id)),
+        );
+      }
+
+      await flushBatch();
+
+      setClearNotice(
+        `Cleared ${rosterSnapshot.size} student${rosterSnapshot.size === 1 ? '' : 's'} and cancelled ${activePassDocs.length} active pass${activePassDocs.length === 1 ? '' : 'es'}.`,
+      );
+      setClearConfirm(false);
+      setSearchTerm('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `students?thirdPeriodTeacherId=${user.uid}`);
+    } finally {
+      setClearingRoster(false);
+    }
+  };
+
   const filteredStudents = students.filter((s) =>
     s.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
@@ -142,21 +266,63 @@ export default function RosterList() {
     <div className="neo-box flex flex-col h-full bg-white">
       <div className="bg-neo-border text-white border-b-4 border-neo-border p-4 flex justify-between items-center">
         <h2 className="text-xl font-black uppercase">Class Roster</h2>
-        <div className="relative w-48 text-neo-border">
-          <input
-            type="text"
-            placeholder="Search roster..."
-            className="neo-input w-full pl-8 py-1 text-xs"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Search className="w-4 h-4 absolute left-2 top-2 text-gray-500" />
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <button
+            onClick={clearRoster}
+            disabled={clearingRoster || students.length === 0}
+            className="neo-button bg-neo-red text-white px-3 py-2 text-xs flex items-center gap-2 disabled:opacity-60"
+          >
+            <Trash2 className="w-4 h-4" />
+            {clearingRoster ? 'Clearing...' : clearConfirm ? 'Confirm Clear' : 'Clear Roster'}
+          </button>
+          <div className="relative w-48 text-neo-border">
+            <input
+              type="text"
+              placeholder="Search roster..."
+              className="neo-input w-full pl-8 py-1 text-xs"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <Search className="w-4 h-4 absolute left-2 top-2 text-gray-500" />
+          </div>
         </div>
       </div>
 
       {cancelNotice && (
         <div className="bg-neo-yellow border-b-4 border-neo-border px-4 py-2 font-black text-sm uppercase text-neo-border">
           {cancelNotice}
+        </div>
+      )}
+
+      {clearConfirm && (
+        <div className="bg-neo-yellow border-b-4 border-neo-border px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-neo-border">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="font-black text-sm uppercase">
+              Remove all {students.length} student{students.length === 1 ? '' : 's'} from this roster?
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={clearRoster}
+              disabled={clearingRoster}
+              className="neo-button bg-neo-red text-white px-3 py-2 text-xs"
+            >
+              Yes, Clear All
+            </button>
+            <button
+              onClick={() => setClearConfirm(false)}
+              className="neo-button bg-white text-neo-border px-3 py-2 text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {clearNotice && (
+        <div className="bg-neo-green border-b-4 border-neo-border px-4 py-2 font-black text-sm uppercase text-neo-border">
+          {clearNotice}
         </div>
       )}
 
