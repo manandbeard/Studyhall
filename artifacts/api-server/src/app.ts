@@ -47,13 +47,14 @@ const errorHandler = (
   res: Response,
   _next: NextFunction,
 ): void => {
+  const response = res as Response;
   logger.error({ err }, "Unhandled request error");
-  if (res.headersSent) {
+  if (response.headersSent) {
     return;
   }
 
   const message = err instanceof Error ? err.message : "Unexpected server error.";
-  res.status(500).json({ error: message });
+  response.status(500).json({ error: message });
 };
 
 app.use(errorHandler);
