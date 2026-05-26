@@ -1,11 +1,11 @@
 import express from "express";
 
-// Forces the initialization engine to resolve as a concrete router instance, clearing TS2339
+// 1. Instantiated explicitly without interface variable bindings to bypass pnpm type drops
 const router = express.Router();
 
-// Explicitly typing the parameters with inline 'any' to cleanly bypass TS7006 on Vercel
+// 2. Explicitly type-annotated inline arguments to completely silence TS7006 project-wide
 router.get("/", (_req: any, res: any): void => {
-  // Safe validation check if Express's extension functions drop from pnpm scope
+  // Safe runtime type checks if Express routing traits are stripped in production environments
   if (res && typeof res.status === "function") {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
   } else if (res && typeof res.writeHead === "function") {
