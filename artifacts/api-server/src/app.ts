@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import express, { Request, Response, NextFunction } from "express";
+import express from "express";
 import cors from "cors";
 import { pinoHttp } from "pino-http";
 import router from "./routes/index.js";
@@ -42,19 +42,20 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
 
 const errorHandler = (
-  err: unknown,
-  _req: Request,
-  res: Response,
-  _next: NextFunction,
+  err: any,
+  _req: any,
+  res: any,
+  _next: any,
 ): void => {
-  const response = res as Response;
   logger.error({ err }, "Unhandled request error");
-  if (response.headersSent) {
+  if ("headersSent" in res && res.headersSent) {
     return;
   }
 
   const message = err instanceof Error ? err.message : "Unexpected server error.";
-  response.status(500).json({ error: message });
+  if (typeof res.status === "function") {
+    res.status(500).json({ error: message });
+  }
 };
 
 app.use(errorHandler);
