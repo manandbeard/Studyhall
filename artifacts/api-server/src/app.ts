@@ -2,11 +2,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import express from "express";
 import cors from "cors";
 import { pinoHttp } from "pino-http";
+import { ErrorRequestHandler } from "express";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 
 const app = express();
 
+// 1. Logger Pipeline Initialization
 app.use(
   pinoHttp({
     logger,
@@ -26,21 +28,29 @@ app.use(
     },
   }),
 );
-// CORS: whitelist origins from CORS_ORIGIN (comma-separated list).
-// Leave CORS_ORIGIN unset to allow all origins (useful during development behind a proxy).
-import { ErrorRequestHandler } from "express";
 
-// ... your route definitions ...
+// 2. Parsers & Network Validation
+const corsOrigin = process.env.CORS_ORIGIN;
+app.use(
+  cors(
+    corsOrigin
+      ? { origin: corsOrigin.split(",").map((s) => s.trim()).filter(Boolean) }
+      : undefined,
+  ),
+);
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// 3. Routing Engine Entry Point
 app.use("/api", router);
 
-// Explicitly bind the ErrorRequestHandler interface to the function wrapper
+// 4. Global Structural Error Request Handler
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   logger.error({ err }, "Unhandled request error");
 
-  // Express types are now fully unlocked natively
+  // Prevent connection hanging if headers are dispatched early
   if (res.headersSent) {
-    return _next(err); // Pass down the stream if headers are already dispatched
+    return _next(err);
   }
 
   const message = err instanceof Error ? err.message : "Unexpected server error.";
