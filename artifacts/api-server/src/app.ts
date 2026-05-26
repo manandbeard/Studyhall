@@ -28,34 +28,25 @@ app.use(
 );
 // CORS: whitelist origins from CORS_ORIGIN (comma-separated list).
 // Leave CORS_ORIGIN unset to allow all origins (useful during development behind a proxy).
-const corsOrigin = process.env.CORS_ORIGIN;
-app.use(
-  cors(
-    corsOrigin
-      ? { origin: corsOrigin.split(",").map((s) => s.trim()).filter(Boolean) }
-      : undefined,
-  ),
-);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+import { ErrorRequestHandler } from "express";
+
+// ... your route definitions ...
 
 app.use("/api", router);
 
-const errorHandler = (
-  err: any,
-  _req: any,
-  res: any,
-  _next: any,
-): void => {
+// Explicitly bind the ErrorRequestHandler interface to the function wrapper
+const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   logger.error({ err }, "Unhandled request error");
-  if ("headersSent" in res && res.headersSent) {
-    return;
+
+  // Express types are now fully unlocked natively
+  if (res.headersSent) {
+    return _next(err); // Pass down the stream if headers are already dispatched
   }
 
   const message = err instanceof Error ? err.message : "Unexpected server error.";
-  if (typeof res.status === "function") {
-    res.status(500).json({ error: message });
-  }
+  const statusCode = err?.status || err?.statusCode || 500;
+
+  res.status(statusCode).json({ error: message });
 };
 
 app.use(errorHandler);
