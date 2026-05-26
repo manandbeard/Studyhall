@@ -2,7 +2,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import express from "express";
 import cors from "cors";
 import { pinoHttp } from "pino-http";
-import { ErrorRequestHandler } from "express";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 
@@ -34,7 +33,7 @@ const corsOrigin = process.env.CORS_ORIGIN;
 app.use(
   cors(
     corsOrigin
-      ? { origin: corsOrigin.split(",").map((s) => s.trim()).filter(Boolean) }
+      ? { origin: corsOrigin.split(",").map((s: string) => s.trim()).filter(Boolean) }
       : undefined,
   ),
 );
@@ -44,21 +43,28 @@ app.use(express.urlencoded({ extended: true }));
 // 3. Routing Engine Entry Point
 app.use("/api", router);
 
-// 4. Global Structural Error Request Handler
-const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+// 4. Global Structural Error Request Handler (Bypasses pnpm type-isolation failures)
+app.use((err: any, _req: any, res: any, _next: any): void => {
   logger.error({ err }, "Unhandled request error");
 
-  // Prevent connection hanging if headers are dispatched early
-  if (res.headersSent) {
-    return _next(err);
+  // Prevent connection hanging if headers are already dispatched early
+  if (res && "headersSent" in res && (res as any).headersSent) {
+    if (typeof _next === "function") {
+      _next(err);
+    }
+    return;
   }
 
   const message = err instanceof Error ? err.message : "Unexpected server error.";
   const statusCode = err?.status || err?.statusCode || 500;
 
-  res.status(statusCode).json({ error: message });
-};
-
-app.use(errorHandler);
+  // Defensive execution paths matching runtime environments cleanly
+  if (res && typeof res.status === "function") {
+    res.status(statusCode).json({ error: message });
+  } else if (res && typeof res.writeHead === "function") {
+    res.writeHead(statusCode, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: message }));
+  }
+});
 
 export default app;
