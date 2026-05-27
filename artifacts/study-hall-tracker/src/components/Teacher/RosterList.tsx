@@ -26,7 +26,7 @@ export default function RosterList({ onRosterCleared }: { onRosterCleared?: () =
   const [cancelNotice, setCancelNotice] = useState<string | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearingRoster, setClearingRoster] = useState(false);
-  const [clearNotice, setClearNotice] = useState<string | null>(null);
+  const [clearNotice, setClearNotice] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -169,20 +169,23 @@ export default function RosterList({ onRosterCleared }: { onRosterCleared?: () =
       const cancelledPasses = Number(body.cancelledPasses ?? 0);
 
       if (clearedStudents === 0) {
-        setClearNotice('Roster is already empty.');
+        setClearNotice({ text: 'Roster is already empty.', type: 'success' });
         setClearConfirm(false);
         return;
       }
 
-      setClearNotice(
-        `Cleared ${clearedStudents} student${clearedStudents === 1 ? '' : 's'} and cancelled ${cancelledPasses} active pass${cancelledPasses === 1 ? '' : 'es'}. Google Classroom disconnected.`,
-      );
+      setClearNotice({
+        text: `Cleared ${clearedStudents} student${clearedStudents === 1 ? '' : 's'} and cancelled ${cancelledPasses} active pass${cancelledPasses === 1 ? '' : 'es'}. Google Classroom disconnected.`,
+        type: 'success',
+      });
       setClearConfirm(false);
       setSearchTerm('');
       onRosterCleared?.();
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to clear roster.';
+      setClearNotice({ text: message, type: 'error' });
       setClearConfirm(false);
-      handleFirestoreError(error, OperationType.DELETE, `students?thirdPeriodTeacherId=${user.uid}`);
+      handleFirestoreError(error, OperationType.DELETE, `students?thirdPeriodTeacherId=${user.uid}`, false);
     } finally {
       setClearingRoster(false);
     }
@@ -251,8 +254,8 @@ export default function RosterList({ onRosterCleared }: { onRosterCleared?: () =
       )}
 
       {clearNotice && (
-        <div className="bg-neo-green border-b-4 border-neo-border px-4 py-2 font-black text-sm uppercase text-neo-border">
-          {clearNotice}
+        <div className={`${clearNotice.type === 'error' ? 'bg-neo-red text-white' : 'bg-neo-green text-neo-border'} border-b-4 border-neo-border px-4 py-2 font-black text-sm uppercase`}>
+          {clearNotice.text}
         </div>
       )}
 
