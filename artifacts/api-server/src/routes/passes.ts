@@ -372,7 +372,7 @@ router.post("/roster/clear", async (req: any, res: any): Promise<void> => {
 
     for (const studentDoc of rosterSnapshot.docs) {
       await addToBatch((b: any) =>
-        b.update(studentDoc.ref, { thirdPeriodTeacherId: "" }),
+        b.delete(studentDoc.ref),
       );
       await addToBatch((b: any) =>
         b.delete(db.collection("activeStudentPasses").doc(studentDoc.id)),

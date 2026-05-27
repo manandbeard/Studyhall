@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth, db } from '@/firebase';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
@@ -6,7 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import { BookOpen, Download, AlertCircle, CheckCircle2, Upload, FileText } from 'lucide-react';
 
-export default function RosterImport() {
+export default function RosterImport({ rosterClearedKey }: { rosterClearedKey?: number }) {
   const { user } = useAuth();
   const [courses, setCourses] = useState<any[]>([]);
   const [token, setToken] = useState<string | null>(null);
@@ -14,6 +14,15 @@ export default function RosterImport() {
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' | 'info' } | null>(null);
   const [manualInput, setManualInput] = useState('');
   const [importMode, setImportMode] = useState<'google' | 'manual'>('google');
+
+  // Reset Google Classroom connection when roster is cleared
+  useEffect(() => {
+    if (rosterClearedKey && rosterClearedKey > 0) {
+      setToken(null);
+      setCourses([]);
+      setMessage(null);
+    }
+  }, [rosterClearedKey]);
 
   const handleConnect = async () => {
     setLoading(true);

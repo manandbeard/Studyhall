@@ -1,6 +1,6 @@
 import { useAuth } from '@/components/AuthProvider';
 import { useLocation, Link } from 'wouter';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import OutgoingPane from '@/components/Teacher/OutgoingPane';
 import IncomingPane from '@/components/Teacher/IncomingPane';
 import RosterImport from '@/components/Teacher/RosterImport';
@@ -16,6 +16,8 @@ export default function TeacherDashboard() {
   const { user, loading, signOut } = useAuth();
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [rosterClearedKey, setRosterClearedKey] = useState(0);
+  const handleRosterCleared = useCallback(() => setRosterClearedKey((k) => k + 1), []);
 
   useEffect(() => {
     if (!loading && (!user || (user.role !== 'teacher' && user.role !== 'admin'))) {
@@ -90,8 +92,8 @@ export default function TeacherDashboard() {
                 <IncomingPane />
               </div>
               <div className="flex flex-col gap-4">
-                <RosterList />
-                <RosterImport />
+                <RosterList onRosterCleared={handleRosterCleared} />
+                <RosterImport rosterClearedKey={rosterClearedKey} />
               </div>
             </div>
           </>

@@ -16,7 +16,7 @@ import { handleFirestoreError, OperationType } from '@/lib/firestore-utils';
 import type { Student } from '@/lib/types';
 import { UserX, UserCheck, Search, Edit3, Trash2, AlertTriangle } from 'lucide-react';
 
-export default function RosterList() {
+export default function RosterList({ onRosterCleared }: { onRosterCleared?: () => void }) {
   const { user } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,10 +175,11 @@ export default function RosterList() {
       }
 
       setClearNotice(
-        `Cleared ${clearedStudents} student${clearedStudents === 1 ? '' : 's'} and cancelled ${cancelledPasses} active pass${cancelledPasses === 1 ? '' : 'es'}.`,
+        `Cleared ${clearedStudents} student${clearedStudents === 1 ? '' : 's'} and cancelled ${cancelledPasses} active pass${cancelledPasses === 1 ? '' : 'es'}. Google Classroom disconnected.`,
       );
       setClearConfirm(false);
       setSearchTerm('');
+      onRosterCleared?.();
     } catch (error) {
       setClearConfirm(false);
       handleFirestoreError(error, OperationType.DELETE, `students?thirdPeriodTeacherId=${user.uid}`);
@@ -228,7 +229,7 @@ export default function RosterList() {
           <div className="flex items-center gap-2 text-neo-border">
             <AlertTriangle className="w-5 h-5" />
             <span className="font-black text-sm uppercase">
-              Remove all {students.length} student{students.length === 1 ? '' : 's'} from this roster?
+              Remove all {students.length} student{students.length === 1 ? '' : 's'} and disconnect Google Classroom?
             </span>
           </div>
           <div className="flex items-center gap-2">
