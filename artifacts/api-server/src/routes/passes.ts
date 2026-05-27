@@ -126,12 +126,13 @@ router.post("/passes/create", async (req: any, res: any): Promise<void> => {
     return;
   }
 
-  const db = getAdminDb();
-  const newPassRef = db.collection("passes").doc(newPassRef?.id);
-  const lockRef = db.collection("activeStudentPasses").doc(studentId);
-  const counterRef = db.collection("teacherActiveCount").doc(destinationTeacherId);
-  const teacherRef = db.collection("users").doc(destinationTeacherId);
-  const studentRef = db.collection("students").doc(studentId);
+// FIXED LINE 130:
+const db = getAdminDb();
+const newPassRef = db.collection("passes").doc(); // Correct: Empty doc() generates a brand new unique ID cleanly
+const lockRef = db.collection("activeStudentPasses").doc(studentId);
+const counterRef = db.collection("teacherActiveCount").doc(destinationTeacherId);
+const teacherRef = db.collection("users").doc(destinationTeacherId);
+const studentRef = db.collection("students").doc(studentId);
 
   try {
     // Line 136: Explicitly typed transaction instance wrapper
